@@ -68,7 +68,7 @@ class BasicBlock:
         s=""
         for i in self.insts:
             inst = disas_at(i, f, fsize)
-            s += str(inst.addr) + " " + inst.desc + "\\n"
+            s += str(hex(int(inst.addr))) + " " + inst.desc + "\\n"
         return s
 
     def insts_to_hex(self):
@@ -279,14 +279,15 @@ def resolve_conflicts_step3(g, conflicts, beginning):
     conflicts_to_remove = set()
     for c in conflicts:
         n, n2 = c
-        # Nodes n and n2 are in conflict
-        pred_n = len(dag.ancestors(g, n))
-        pred_n2 = len(dag.ancestors(g, n2))
+        if g.has_node(n) and g.has_node(n2):
+            # Nodes n and n2 are in conflict
+            pred_n = len(dag.ancestors(g, n))
+            pred_n2 = len(dag.ancestors(g, n2))
 
-        if pred_n > pred_n2:
-            conflict_resolved(g, c, n2, conflicts_to_remove)
-        elif pred_n2 > pred_n:
-            conflict_resolved(g, c, n, conflicts_to_remove)
+            if pred_n > pred_n2:
+                conflict_resolved(g, c, n2, conflicts_to_remove)
+            elif pred_n2 > pred_n:
+                conflict_resolved(g, c, n, conflicts_to_remove)
 
     update_conflicts(g, conflicts, conflicts_to_remove)
 
@@ -296,14 +297,15 @@ def resolve_conflicts_step4(g, conflicts, beginning):
     conflicts_to_remove = set()
     for c in conflicts:
         n, n2 = c
-        # Nodes n and n2 are in conflict
-        sons_n = len(g.out_edges(n))
-        sons_n2 = len(g.out_edges(n2))
+        if g.has_node(n) and g.has_node(n2):
+            # Nodes n and n2 are in conflict
+            sons_n = len(g.out_edges(n))
+            sons_n2 = len(g.out_edges(n2))
 
-        if sons_n > sons_n2:
-            conflict_resolved(g, c, n2, conflicts_to_remove)
-        elif sons_n2 > sons_n:
-            conflict_resolved(g, c, n, conflicts_to_remove)
+            if sons_n > sons_n2:
+                conflict_resolved(g, c, n2, conflicts_to_remove)
+            elif sons_n2 > sons_n:
+                conflict_resolved(g, c, n, conflicts_to_remove)
 
     update_conflicts(g, conflicts, conflicts_to_remove)
 
@@ -328,8 +330,8 @@ def resolve_conflicts(g, conflicts, beginning):
     resolve_conflicts_step1(g, conflicts, beginning)
     resolve_conflicts_step2(g, conflicts, beginning)
     resolve_conflicts_step3(g, conflicts, beginning)
-    resolve_conflicts_step4(g, conflicts, beginning)
-    resolve_conflicts_step5(g, conflicts, beginning)
+    # resolve_conflicts_step4(g, conflicts, beginning)
+    # resolve_conflicts_step5(g, conflicts, beginning)
 
 
 def draw_conflicts(g, conflicts):
@@ -340,11 +342,11 @@ def draw_conflicts(g, conflicts):
 
 
 def disas_segment(beginning, end, f, fsize):
-    g = nx.DiGraph()
+    g = nx.MultiDiGraph()
     for a in range(beginning, end):
         inst = disas_at(a, f, fsize)
-        if inst.has_target or inst.addr == beginning:
-            make_basic_block(beginning, end, a, g, f, fsize)
+        # if inst.has_target or inst.addr == beginning:
+        make_basic_block(beginning, end, a, g, f, fsize)
     conflicts = compute_conflicts(g)
     resolve_conflicts(g, conflicts, beginning)
     print len(conflicts), "conflicts remain."
@@ -378,5 +380,5 @@ nx.write_dot(g, 'file.dot')
 # nx.draw(h)
 # plt.show()
 
-# for i in range(fsize):
-#     print disas_at(i, f, fsize)
+for i in range(fsize):
+    print disas_at(i, f, fsize)
