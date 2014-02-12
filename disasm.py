@@ -65,7 +65,7 @@ class BasicBlock:
         return inst.addr in self.insts
 
     def insts_to_str(self):
-        s=""
+        s = ""
         for i in self.insts:
             inst = disas_at(i, f, fsize)
             s += str(hex(int(inst.addr))) + " " + inst.desc + "\\n"
@@ -75,8 +75,8 @@ class BasicBlock:
         return [hex(int(i)) for i in self.insts]
 
     def __str__(self):
-        return "[" + str(hex(int(self.addr))) + " -> " + str(hex(int(self.addr+self.size-1))) + "] (" + str(hex(int(self.size))) + ")" \
-            + " \\n " + self.insts_to_str()
+        return "[" + str(hex(int(self.addr))) + " -> " + str(hex(int(self.addr+self.size-1))) \
+               + "] (" + str(hex(int(self.size))) + ")" + " \\n " + self.insts_to_str()
 
 if len(sys.argv) > 1:
     path = sys.argv[1]
@@ -242,21 +242,32 @@ def update_conflicts(g, conflicts, conflicts_to_remove):
         conflicts.remove(c)
 
 
-def resolve_conflicts_step1(g, conflicts, beginning):
-    # Step 1: beginning vs other -> beginning
+def resolve_successors_from(g, conflicts, node):
     conflicts_to_remove = set()
     for c in conflicts:
         n, n2 = c
         # Nodes n and n2 are in conflict
-        if n.addr == beginning:
+        if n is node:
             conflict_resolved(g, c, n2, conflicts_to_remove)
-        elif n2.addr == beginning:
+        elif n2 is node:
             conflict_resolved(g, c, n, conflicts_to_remove)
 
     update_conflicts(g, conflicts, conflicts_to_remove)
+    for edge in g.out_edges(node):
+        u, v = edge
+        resolve_successors_from(v)
 
 
-def resolve_conflicts_step2(g, conflicts, beginning):
+def resolve_conflicts_step1(g, conflicts, beginning):
+    # Step 1: beginning vs other -> beginning
+    for n in g.nodes():
+        if n.addr == beginning:
+            resolve_successors_from(g, conflicts, n)
+            break
+
+
+
+def resolve_conflicts_step2(g, conflicts):
     # Step 2: remove common ancestors of nodes in conflict
     conflicts_to_remove = set()
     for c in conflicts:
@@ -274,43 +285,67 @@ def resolve_conflicts_step2(g, conflicts, beginning):
     update_conflicts(g, conflicts, conflicts_to_remove)
 
 
-def resolve_conflicts_step3(g, conflicts, beginning):
+def resolve_conflicts_step3(g, conflicts):
     # Step 3: take the one with the more ancestors
+    n_ancestors = dict()
     conflicts_to_remove = set()
+    for c in conflicts:
+        n, n2 = c
+        if g.has_node(n):
+            n_ancestors[n] = len(dag.ancestors(g, n))
+        if g.has_node(n2):
+            n_ancestors[n2] = len(dag.ancestors(g, n2))
+
     for c in conflicts:
         n, n2 = c
         if g.has_node(n) and g.has_node(n2):
             # Nodes n and n2 are in conflict
-            pred_n = len(dag.ancestors(g, n))
-            pred_n2 = len(dag.ancestors(g, n2))
+            pred_n = n_ancestors[n]
+            pred_n2 = n_ancestors[n2]
 
             if pred_n > pred_n2:
+                # print "taking", n, "(", pred_n, ")"
+                # print "over", n2, "(", pred_n2, ")"
                 conflict_resolved(g, c, n2, conflicts_to_remove)
             elif pred_n2 > pred_n:
+                # print "taking", n2, "(", pred_n2, ")"
+                # print "over", n, "(", pred_n, ")"
                 conflict_resolved(g, c, n, conflicts_to_remove)
 
     update_conflicts(g, conflicts, conflicts_to_remove)
 
 
-def resolve_conflicts_step4(g, conflicts, beginning):
+def resolve_conflicts_step4(g, conflicts):
     # Step 4: take the one with the more sons
+    n_sons = dict()
     conflicts_to_remove = set()
+    for c in conflicts:
+        n, n2 = c
+        if g.has_node(n):
+            n_sons[n] = len(g.out_edges(n))
+        if g.has_node(n2):
+            n_sons[n2] = len(g.out_edges(n2))
+
     for c in conflicts:
         n, n2 = c
         if g.has_node(n) and g.has_node(n2):
             # Nodes n and n2 are in conflict
-            sons_n = len(g.out_edges(n))
-            sons_n2 = len(g.out_edges(n2))
+            pred_n = n_sons[n]
+            pred_n2 = n_sons[n2]
 
-            if sons_n > sons_n2:
+            if pred_n > pred_n2:
+                # print "taking", n, "(", pred_n, ")"
+                # print "over", n2, "(", pred_n2, ")"
                 conflict_resolved(g, c, n2, conflicts_to_remove)
-            elif sons_n2 > sons_n:
+            elif pred_n2 > pred_n:
+                # print "taking", n2, "(", pred_n2, ")"
+                # print "over", n, "(", pred_n, ")"
                 conflict_resolved(g, c, n, conflicts_to_remove)
 
     update_conflicts(g, conflicts, conflicts_to_remove)
 
 
-def resolve_conflicts_step5(g, conflicts, beginning):
+def resolve_conflicts_step5(g, conflicts):
     # Step 5: take one randomly
     conflicts_to_remove = set()
     for c in conflicts:
@@ -327,26 +362,32 @@ def resolve_conflicts_step5(g, conflicts, beginning):
 
 
 def resolve_conflicts(g, conflicts, beginning):
+    print "Solving", len(conflicts), "conflicts."
     resolve_conflicts_step1(g, conflicts, beginning)
-    resolve_conflicts_step2(g, conflicts, beginning)
-    resolve_conflicts_step3(g, conflicts, beginning)
-    # resolve_conflicts_step4(g, conflicts, beginning)
-    # resolve_conflicts_step5(g, conflicts, beginning)
+    print "After step 1,", len(conflicts), "conflicts remain."
+    resolve_conflicts_step2(g, conflicts)
+    print "After step 2,", len(conflicts), "conflicts remain."
+    resolve_conflicts_step3(g, conflicts)
+    print "After step 3,", len(conflicts), "conflicts remain."
+    resolve_conflicts_step4(g, conflicts)
+    print "After step 4,", len(conflicts), "conflicts remain."
+    # resolve_conflicts_step5(g, conflicts)
+    # print "After step 5,", len(conflicts), "conflicts remain."
 
 
 def draw_conflicts(g, conflicts):
     for c in conflicts:
         n, n2 = c
         connect_to(g, n2, n, "green")
-        connect_to(g, n, n2, "green")
+        # connect_to(g, n, n2, "green")
 
 
 def disas_segment(beginning, end, f, fsize):
     g = nx.MultiDiGraph()
     for a in range(beginning, end):
         inst = disas_at(a, f, fsize)
-        # if inst.has_target or inst.addr == beginning:
-        make_basic_block(beginning, end, a, g, f, fsize)
+        if inst.has_target or inst.addr == beginning:
+            make_basic_block(beginning, end, a, g, f, fsize)
     conflicts = compute_conflicts(g)
     resolve_conflicts(g, conflicts, beginning)
     print len(conflicts), "conflicts remain."
@@ -354,12 +395,12 @@ def disas_segment(beginning, end, f, fsize):
     return g
 
 
-def disas_file(virt_offset, f, fsize):
-    g = nx.Graph()
-    g.add_nodes_from(range(virt_offset, fsize+virt_offset))
-    # nx.draw_graphviz(g)
-    # nx.write_dot(g, 'file.dot')
-    print "blah"
+# def disas_file(virt_offset, f, fsize):
+#     g = nx.Graph()
+#     g.add_nodes_from(range(virt_offset, fsize+virt_offset))
+#     # nx.draw_graphviz(g)
+#     # nx.write_dot(g, 'file.dot')
+#     print "blah"
 
 
 g = disas_segment(0, fsize-1, f, fsize)
@@ -380,5 +421,5 @@ nx.write_dot(g, 'file.dot')
 # nx.draw(h)
 # plt.show()
 
-for i in range(fsize):
-    print disas_at(i, f, fsize)
+# for i in range(fsize):
+#     print disas_at(i, f, fsize)
