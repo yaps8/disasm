@@ -213,17 +213,27 @@ def make_basic_block(beginning, end, addr, g, f, fsize):
     return block
 
 
-def compute_conflicts(g):
+def compute_conflicts(g, beginning, end):
     conflicts = set()
-    done = set()
+    # done = set()
 
-    for n in g.nodes():
-        for n2 in g.nodes():
-            if (not frozenset([n.addr, n2.addr]) in done) and n != n2:
-                if n.addr <= n2.addr <= n.addr + n.size - 1 or n.addr <= n2.addr + n2.size - 1 <= n.addr + n.size - 1:
-                    done.add(frozenset([n.addr, n2.addr]))
-                    conflicts.add((n, n2))
+    for a in range(beginning, end):
+        conflict = []
+        for n in g.nodes():
+            if n.addr <= a <= n.addr + n.size - 1:
+                conflict.append(n)
+        if len(conflict) >= 2:
+            conflicts.add(frozenset(conflict))
+
     return conflicts
+    #
+    # for n in g.nodes():
+    #     for n2 in g.nodes():
+    #         if (not frozenset([n.addr, n2.addr]) in done) and n != n2:
+    #             if n.addr <= n2.addr <= n.addr + n.size - 1 or n.addr <= n2.addr + n2.size - 1 <= n.addr + n.size - 1:
+    #                 done.add(frozenset([n.addr, n2.addr]))
+    #                 conflicts.add((n, n2))
+    # return conflicts
 
 
 def conflict_resolved(g, conflict, node_to_remove, conflicts_to_remove):
@@ -232,7 +242,8 @@ def conflict_resolved(g, conflict, node_to_remove, conflicts_to_remove):
     conflicts_to_remove.add(conflict)
 
 
-def update_conflicts(g, conflicts, conflicts_to_remove):
+def update_conflicts(g, conflicts):
+    conflicts_to_remove = set()
     for c in conflicts:
         n, n2 = c
         if (not g.has_node(n)) or (not g.has_node(n2)):
@@ -242,34 +253,61 @@ def update_conflicts(g, conflicts, conflicts_to_remove):
         conflicts.remove(c)
 
 
-def resolve_successors_from(g, conflicts, node):
-    conflicts_to_remove = set()
-    for c in conflicts:
-        n, n2 = c
-        # Nodes n and n2 are in conflict
-        if n is node:
-            conflict_resolved(g, c, n2, conflicts_to_remove)
-        elif n2 is node:
-            conflict_resolved(g, c, n, conflicts_to_remove)
+# def resolve_successors_from(g, conflicts, node):
+#     conflicts_to_remove = set()
+#     for c in conflicts:
+#         n, n2 = c
+#         # Nodes n and n2 are in conflict
+#         if n is node:
+#             conflict_resolved(g, c, n2, conflicts_to_remove)
+#         elif n2 is node:
+#             conflict_resolved(g, c, n, conflicts_to_remove)
+#
+#     update_conflicts(g, conflicts, conflicts_to_remove)
+#     for edge in g.out_edges(node):
+#         u, v = edge
+#         resolve_successors_from(v)
 
-    update_conflicts(g, conflicts, conflicts_to_remove)
-    for edge in g.out_edges(node):
-        u, v = edge
-        resolve_successors_from(v)
+
+def remove_nodes(g, nodes):
+    count = 0
+    for n in nodes:
+        if g.has_node(n):
+            g.remove_node(n)
+            count += 1
+    return count
 
 
 def resolve_conflicts_step1(g, conflicts, beginning):
-    # Step 1: beginning vs other -> beginning
+    # Step 1: reachable from pe vs not reachable from pe -> first one
+    # En pratique :
+    # On prend tous les successeurs du point d'entrée (incluant le pe)
+    # En cas de conflit, un successeur est préféré à un non successeur
+    # Si aucun ou deux successeurs : on garde les deux
+    nodes_to_remove = set()
     for n in g.nodes():
         if n.addr == beginning:
-            resolve_successors_from(g, conflicts, n)
+            succ = g.successors(n)
+            succ.append(n)
             break
+    for c in conflicts:
+        n, n2 = c
+        # Nodes n and n2 are in conflict
+        if n in succ and n2 not in succ:
+            nodes_to_remove.add(n2)
+        elif n2 in succ and n not in succ:
+            nodes_to_remove.add(n)
+
+    n_removed = remove_nodes(g, nodes_to_remove)
+    update_conflicts(g, conflicts)
+    return n_removed
 
 
 
-def resolve_conflicts_step2(g, conflicts):
+
+def resolve_conflicts_step2(g, conflicts, beginning):
     # Step 2: remove common ancestors of nodes in conflict
-    conflicts_to_remove = set()
+    nodes_to_remove = set()
     for c in conflicts:
         n, n2 = c
         if g.has_node(n) and g.has_node(n2):
@@ -279,11 +317,11 @@ def resolve_conflicts_step2(g, conflicts):
             inter = a_n.intersection(a_n2)
 
             for nn in inter:
-                g.remove_node(nn)
-                # conflit_resolved(g, c, nn, conflicts_to_remove)
+                nodes_to_remove.add(nn)
 
-    update_conflicts(g, conflicts, conflicts_to_remove)
-
+    n_removed = remove_nodes(g, nodes_to_remove)
+    update_conflicts(g, conflicts)
+    return n_removed
 
 def resolve_conflicts_step3(g, conflicts):
     # Step 3: take the one with the more ancestors
@@ -361,24 +399,51 @@ def resolve_conflicts_step5(g, conflicts):
     update_conflicts(g, conflicts, conflicts_to_remove)
 
 
+def iterate_step(fun, g, conflicts, beginning):
+    while True:
+        n_removed = fun(g, conflicts, beginning)
+        print fun, "removed", n_removed, "nodes."
+        if n_removed == 0:
+            break
+
+
+def print_conflicts(conflicts):
+    print "Conflicts:"
+    for c in conflicts:
+        s = ""
+        for n in c:
+            s += str(hex(int(n.addr))) + " "
+        print s
+
+
 def resolve_conflicts(g, conflicts, beginning):
+    print_conflicts(conflicts)
     print "Solving", len(conflicts), "conflicts."
-    resolve_conflicts_step1(g, conflicts, beginning)
+    # iterate_step(resolve_conflicts_step1, g, conflicts, beginning)
     print "After step 1,", len(conflicts), "conflicts remain."
-    resolve_conflicts_step2(g, conflicts)
+    # iterate_step(resolve_conflicts_step2, g, conflicts, beginning)
     print "After step 2,", len(conflicts), "conflicts remain."
-    resolve_conflicts_step3(g, conflicts)
-    print "After step 3,", len(conflicts), "conflicts remain."
-    resolve_conflicts_step4(g, conflicts)
-    print "After step 4,", len(conflicts), "conflicts remain."
+    # resolve_conflicts_step3(g, conflicts)
+    # print "After step 3,", len(conflicts), "conflicts remain."
+    # resolve_conflicts_step4(g, conflicts)
+    # print "After step 4,", len(conflicts), "conflicts remain."
     # resolve_conflicts_step5(g, conflicts)
     # print "After step 5,", len(conflicts), "conflicts remain."
 
 
 def draw_conflicts(g, conflicts):
+    draw = set()
     for c in conflicts:
-        n, n2 = c
-        connect_to(g, n2, n, "green")
+        for n1 in c:
+            for n2 in c:
+                if n1 != n2:
+                    draw.add(frozenset([n1, n2]))
+
+    for d in draw:
+        n1, n2 = d
+        connect_to(g, n1, n2, "green")
+        # n, n2 = c
+        # connect_to(g, n2, n, "green")
         # connect_to(g, n, n2, "green")
 
 
@@ -386,9 +451,9 @@ def disas_segment(beginning, end, f, fsize):
     g = nx.MultiDiGraph()
     for a in range(beginning, end):
         inst = disas_at(a, f, fsize)
-        if inst.has_target or inst.addr == beginning:
-            make_basic_block(beginning, end, a, g, f, fsize)
-    conflicts = compute_conflicts(g)
+        # if inst.has_target or inst.addr == beginning:
+        make_basic_block(beginning, end, a, g, f, fsize)
+    conflicts = compute_conflicts(g, beginning, end)
     resolve_conflicts(g, conflicts, beginning)
     print len(conflicts), "conflicts remain."
     draw_conflicts(g, conflicts)
