@@ -283,7 +283,7 @@ def soft_graph_copy(g):
     return h
 
 
-def ancestors_without_conflicts(g, n, conflicts):
+def remove_conflicts_from_graph(g, n, conflicts):
     h = soft_graph_copy(g)
     in_conflict = set()
     for c in conflicts:
@@ -291,10 +291,12 @@ def ancestors_without_conflicts(g, n, conflicts):
             for n2 in c:
                 if n2 != n:
                     in_conflict.add(n2)
+    succ = dag.descendants(g, n)
     for n2 in in_conflict:
         # print "removing!!", n2
-        h.remove_node(n2)
-    return dag.ancestors(h, n)
+        if n2 not in succ:
+            h.remove_node(n2)
+    return h
 
 
 def resolve_conflicts_step3(g, conflicts, beginning):
@@ -303,36 +305,27 @@ def resolve_conflicts_step3(g, conflicts, beginning):
     n_ancestors = dict()
     for c in conflicts:
         last_n_a = -1
+        to_keep_succ = set()
         # print "resolving", set_to_str(c)
         for n in c:
             if not n in n_ancestors:
-                n_ancestors[n] = len(ancestors_without_conflicts(g, n, conflicts))
+                h = remove_conflicts_from_graph(g, n, conflicts)
+                n_ancestors[n] = len(dag.ancestors(h, n))
             n_a = n_ancestors[n]
             if n_a > last_n_a:
                 last_n_a = n_a
+                to_keep_succ.add(dag.descendants(g, n))
+                to_keep_succ.add(n)
         for n in c:
             n_a = n_ancestors[n]
             if n_a < last_n_a:
                 # print "removing", str(hex(int(n.addr)))
-                nodes_to_remove.add(n)
+                if n not in to_keep_succ:
+                    nodes_to_remove.add(n)
 
     n_removed = remove_nodes(g, nodes_to_remove)
     update_conflicts(g, conflicts)
     return n_removed
-
-
-def sons_without_conflicts(g, n, conflicts):
-    h = soft_graph_copy(g)
-    in_conflict = set()
-    for c in conflicts:
-        if n in c:
-            for n2 in c:
-                if n2 != n:
-                    in_conflict.add(n2)
-    for n2 in in_conflict:
-        h.remove_node(n2)
-
-    return h.out_edges(n)
 
 
 def resolve_conflicts_step4(g, conflicts, beginning):
@@ -344,7 +337,8 @@ def resolve_conflicts_step4(g, conflicts, beginning):
         # print "resolving", set_to_str(c)
         for n in c:
             if not n in n_ancestors:
-                n_ancestors[n] = len(sons_without_conflicts(g, n, conflicts))
+                h = remove_conflicts_from_graph(g, n, conflicts)
+                n_ancestors[n] = len(h.out_edges(n))
             n_a = n_ancestors[n]
             if n_a > last_n_a:
                 last_n_a = n_a
@@ -405,14 +399,14 @@ def resolve_conflicts(g, conflicts, beginning):
     print "Solving", len(conflicts), "conflicts."
     iterate_step(resolve_conflicts_step1, g, conflicts, beginning)
     print "After step 1,", len(conflicts), "conflicts remain."
-    iterate_step(resolve_conflicts_step2, g, conflicts, beginning)
-    print "After step 2,", len(conflicts), "conflicts remain."
-    iterate_step(resolve_conflicts_step3, g, conflicts, beginning)
-    print "After step 3,", len(conflicts), "conflicts remain."
-    iterate_step(resolve_conflicts_step4, g, conflicts, beginning)
-    print "After step 4,", len(conflicts), "conflicts remain."
-    iterate_step(resolve_conflicts_step5, g, conflicts, beginning)
-    print "After step 5,", len(conflicts), "conflicts remain."
+    # iterate_step(resolve_conflicts_step2, g, conflicts, beginning)
+    # print "After step 2,", len(conflicts), "conflicts remain."
+    # iterate_step(resolve_conflicts_step3, g, conflicts, beginning)
+    # print "After step 3,", len(conflicts), "conflicts remain."
+    # iterate_step(resolve_conflicts_step4, g, conflicts, beginning)
+    # print "After step 4,", len(conflicts), "conflicts remain."
+    # iterate_step(resolve_conflicts_step5, g, conflicts, beginning)
+    # print "After step 5,", len(conflicts), "conflicts remain."
 
 
 def draw_conflicts(g, conflicts):
