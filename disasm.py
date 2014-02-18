@@ -86,27 +86,6 @@ else:
 f = open(path, "rb")
 fsize = os.path.getsize(path)
 
-# bs = []
-# try:
-#     byte = f.read(1)
-#     k = 0
-#     while len(byte) > 0:
-#         s = '{0:02x}'.format(ord(byte[0]))
-#         i = int(s, 16)
-# #        print i
-# #        print "%d %x" % (i,i)
-#         byte = f.read(1)
-#         bs.append(i)
-# finally:
-#     # f.seek(0)
-#     f.close()
-
-
-# def int_tab_to_str(tab, begin, size):
-#     s = ""
-#     for i in range(begin, begin+size):
-#         s += str(tab[i])
-#     return s
 
 def disas_at(offset, f, size):
     if offset < size:
@@ -117,28 +96,15 @@ def disas_at(offset, f, size):
         print "Error in disas_at"
 
 
-# s = int_tab_to_str(bs, 0, 8)
-# s = "90"
-# l = distorm3.Decode(eip, f.read(), distorm3.Decode32Bits)
-# ib = l[0]
-# print "0x%08x (%02x) %-20s %s" % (ib[0],  ib[1],  ib[3],  ib[2])
-# print disas_at(0x49, f, fsize)
-# print disas_at(0x40, f, fsize)
-# for ib in l:
-#     print "0x%08x (%02x) %-20s %s" % (ib[0],  ib[1],  ib[3],  ib[2])
-
-
 def get_first_block_having(g, inst):
     nodes = g.nodes()
     for b in nodes:
-        # print "b: " + str(b)
         if b.contains_inst(inst):
             return True, b
     return False, None
 
 
 def split_block(b, addr, g):
-    # print "spliting " + str(b)
     b2 = BasicBlock(addr)
     b2.insts = [x for x in b.insts if x >= addr]
     b2.size = b.addr - addr + b.size
@@ -150,36 +116,21 @@ def split_block(b, addr, g):
     connect_to(g, b, b2)
     b.size = addr - b.addr
     b.insts = [x for x in b.insts if x < addr]
-
-    # print "into " + str(b)
-    # print "and " + str(b2)
-    # print ""
-
     return b2
 
 
 def connect_to(g, block, b, color="black"):
-    # print "linking ", block
-    # print "to ", b
-    # print color
-    # print ""
     g.add_edge(block, b, color=color)
 
 
 def make_basic_block(beginning, end, addr, g, f, fsize):
-    # print "makebb with addr =", addr
     block = BasicBlock(addr)
-    # g.add_node(block)
 
     while beginning <= addr <= end:
-        # print "while with addr =", addr
         inst = disas_at(addr, f, fsize)
-        # add_inst_to_block(inst, block)
-
         (exist, b) = get_first_block_having(g, inst)
 
         if exist:
-            # print "exists"
             if addr != b.addr:
                 b = split_block(b, addr, g)
 
@@ -215,7 +166,6 @@ def make_basic_block(beginning, end, addr, g, f, fsize):
 
 def compute_conflicts(g, beginning, end):
     conflicts = set()
-    # done = set()
 
     for a in range(beginning, end):
         conflict = []
@@ -226,14 +176,6 @@ def compute_conflicts(g, beginning, end):
             conflicts.add(frozenset(conflict))
 
     return conflicts
-    #
-    # for n in g.nodes():
-    #     for n2 in g.nodes():
-    #         if (not frozenset([n.addr, n2.addr]) in done) and n != n2:
-    #             if n.addr <= n2.addr <= n.addr + n.size - 1 or n.addr <= n2.addr + n2.size - 1 <= n.addr + n.size - 1:
-    #                 done.add(frozenset([n.addr, n2.addr]))
-    #                 conflicts.add((n, n2))
-    # return conflicts
 
 
 def conflict_resolved(g, conflict, node_to_remove, conflicts_to_remove):
@@ -259,22 +201,6 @@ def update_conflicts(g, conflicts):
         conflicts.remove(c)
     for c in conflicts_to_add:
         conflicts.add(c)
-
-
-# def resolve_successors_from(g, conflicts, node):
-#     conflicts_to_remove = set()
-#     for c in conflicts:
-#         n, n2 = c
-#         # Nodes n and n2 are in conflict
-#         if n is node:
-#             conflict_resolved(g, c, n2, conflicts_to_remove)
-#         elif n2 is node:
-#             conflict_resolved(g, c, n, conflicts_to_remove)
-#
-#     update_conflicts(g, conflicts, conflicts_to_remove)
-#     for edge in g.out_edges(node):
-#         u, v = edge
-#         resolve_successors_from(v)
 
 
 def remove_nodes(g, nodes):
@@ -307,18 +233,10 @@ def resolve_conflicts_step1(g, conflicts, beginning):
                 set_from_succ.add(n)
             elif n not in succ:
                 set_not_from_succ.add(n)
-
         if set_from_succ:
             # print "removing", set_to_str(set_not_from_succ)
             for n in set_not_from_succ:
                 nodes_to_remove.add(n)
-        # print c
-        # n, n2 = c
-        # # Nodes n and n2 are in conflict
-        # if n in succ and n2 not in succ:
-        #     nodes_to_remove.add(n2)
-        # elif n2 in succ and n not in succ:
-        #     nodes_to_remove.add(n)
 
     n_removed = remove_nodes(g, nodes_to_remove)
     update_conflicts(g, conflicts)
@@ -441,20 +359,22 @@ def resolve_conflicts_step4(g, conflicts, beginning):
     return n_removed
 
 
-def resolve_conflicts_step5(g, conflicts):
+def resolve_conflicts_step5(g, conflicts, beginning):
     # Step 5: take one randomly
-    conflicts_to_remove = set()
+    nodes_to_remove = set()
     for c in conflicts:
-        n, n2 = c
-        # Nodes n and n2 are in conflict
-        r = randrange(2)
+        r = randrange(len(c))
+        i = 0
+        print "c", set_to_str(c), len(c), r
+        for n in c:
+            if i != r:
+                nodes_to_remove.add(n)
+            i += 1
+        break
 
-        if r == 0:
-            conflict_resolved(g, c, n2, conflicts_to_remove)
-        else:
-            conflict_resolved(g, c, n, conflicts_to_remove)
-
-    update_conflicts(g, conflicts, conflicts_to_remove)
+    n_removed = remove_nodes(g, nodes_to_remove)
+    update_conflicts(g, conflicts)
+    return n_removed
 
 
 def iterate_step(fun, g, conflicts, beginning):
@@ -481,7 +401,7 @@ def print_conflicts(conflicts):
 
 
 def resolve_conflicts(g, conflicts, beginning):
-    # print_conflicts(conflicts)
+    print_conflicts(conflicts)
     print "Solving", len(conflicts), "conflicts."
     iterate_step(resolve_conflicts_step1, g, conflicts, beginning)
     print "After step 1,", len(conflicts), "conflicts remain."
@@ -491,8 +411,8 @@ def resolve_conflicts(g, conflicts, beginning):
     print "After step 3,", len(conflicts), "conflicts remain."
     iterate_step(resolve_conflicts_step4, g, conflicts, beginning)
     print "After step 4,", len(conflicts), "conflicts remain."
-    # resolve_conflicts_step5(g, conflicts)
-    # print "After step 5,", len(conflicts), "conflicts remain."
+    iterate_step(resolve_conflicts_step5, g, conflicts, beginning)
+    print "After step 5,", len(conflicts), "conflicts remain."
 
 
 def draw_conflicts(g, conflicts):
@@ -502,13 +422,9 @@ def draw_conflicts(g, conflicts):
             for n2 in c:
                 if n1 != n2:
                     draw.add(frozenset([n1, n2]))
-
     for d in draw:
         n1, n2 = d
         connect_to(g, n1, n2, "green")
-        # n, n2 = c
-        # connect_to(g, n2, n, "green")
-        # connect_to(g, n, n2, "green")
 
 
 def disas_segment(beginning, end, f, fsize):
@@ -524,31 +440,11 @@ def disas_segment(beginning, end, f, fsize):
     return g
 
 
-# def disas_file(virt_offset, f, fsize):
-#     g = nx.Graph()
-#     g.add_nodes_from(range(virt_offset, fsize+virt_offset))
-#     # nx.draw_graphviz(g)
-#     # nx.write_dot(g, 'file.dot')
-#     print "blah"
+def disas_file(f, fsize):
+    return disas_segment(0, fsize - 1, f, fsize)
 
 
-g = disas_segment(0, fsize-1, f, fsize)
+# g = disas_segment(0, fsize-1, f, fsize)
+g = disas_file(f, fsize)
 nx.draw_graphviz(g)
 nx.write_dot(g, 'file.dot')
-# nx.draw(g)
-# plt.show()
-# disas_file(0, f, fsize)
-
-# h = nx.DiGraph()
-# bb = BasicBlock(0, 0)
-# h.add_node(bb)
-# bb.size = 2
-# h.add_node(bb)
-# h.add_node(bb)
-# h.add_node(bb)
-# h.add_node(bb)
-# nx.draw(h)
-# plt.show()
-
-# for i in range(fsize):
-#     print disas_at(i, f, fsize)
