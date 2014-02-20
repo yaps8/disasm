@@ -164,6 +164,14 @@ def make_basic_block(beginning, end, addr, g, f, fsize):
     return block
 
 
+def conflict_in_subset(conflict, conflicts):
+    for c in conflicts:
+        if c != conflict and conflict.issubset(c):
+            print "subset of conflict detected!"
+            return True
+    return False
+
+
 def compute_conflicts(g, beginning, end):
     conflicts = set()
 
@@ -175,6 +183,14 @@ def compute_conflicts(g, beginning, end):
         if len(conflict) >= 2:
             conflicts.add(frozenset(conflict))
 
+    conflicts_in_subset = set()
+    for c in conflicts:
+        if conflict_in_subset(c, conflicts):
+            conflicts_in_subset.add(c)
+
+    for c in conflicts_in_subset:
+        conflicts.remove(c)
+
     return conflicts
 
 
@@ -184,7 +200,10 @@ def conflict_resolved(g, conflict, node_to_remove, conflicts_to_remove):
     conflicts_to_remove.add(conflict)
 
 
-def update_conflicts(g, conflicts):
+def update_conflicts(g, conflicts, non_conflicts=None):
+    if non_conflicts is None:
+        non_conflicts = set()
+
     conflicts_to_remove = set()
     conflicts_to_add = set()
     for c in conflicts:
@@ -202,6 +221,28 @@ def update_conflicts(g, conflicts):
     for c in conflicts_to_add:
         conflicts.add(c)
 
+    conflicts_to_remove.clear()
+    conflicts_to_add.clear()
+
+    # Splitting conflicts that have elements no longer in conflicts:
+    for nc in non_conflicts:
+        for c in conflicts:
+            inter = c.intersection(nc)
+            if len(inter) >= 2:
+                for n in inter:
+                    l = []
+                    for nn in c:
+                        if n != nn:
+                            l.append(nn)
+                    conflicts_to_add(frozenset(l))
+                conflicts_to_remove(c)
+
+    for c in conflicts_to_remove:
+        conflicts.remove(c)
+    for c in conflicts_to_add:
+        conflicts.add(c)
+
+
 
 def remove_nodes(g, nodes):
     count = 0
@@ -212,6 +253,16 @@ def remove_nodes(g, nodes):
     return count
 
 
+def all_reachable_from_set(nodes, g):
+    succ = set()
+    for n in nodes:
+        succ.add(n)
+        for e in g.out_edges(n):
+            u, v = e
+            succ.add(v)
+    return succ
+
+
 def resolve_conflicts_step1(g, conflicts, beginning):
     # Step 1: reachable from pe vs not reachable from pe -> first one
     # En pratique :
@@ -219,12 +270,14 @@ def resolve_conflicts_step1(g, conflicts, beginning):
     # En cas de conflit, un successeur est préféré à un non successeur
     # Si aucun ou deux successeurs : on garde les deux
     nodes_to_remove = set()
+    non_conflict = set()
     for n in g.nodes():
         if n.addr == beginning:
             succ = g.successors(n)
             succ.append(n)
             break
     for c in conflicts:
+        l = []
         # print "solving", set_to_str(c)
         set_from_succ = set()
         set_not_from_succ = set()
@@ -233,10 +286,13 @@ def resolve_conflicts_step1(g, conflicts, beginning):
                 set_from_succ.add(n)
             elif n not in succ:
                 set_not_from_succ.add(n)
+        succ = all_reachable_from_set(set_from_succ, g)
         if set_from_succ:
             # print "removing", set_to_str(set_not_from_succ)
             for n in set_not_from_succ:
                 nodes_to_remove.add(n)
+            for n in succ.intersection(set_from_succ):
+                l.append(n)
 
     n_removed = remove_nodes(g, nodes_to_remove)
     update_conflicts(g, conflicts)
@@ -302,6 +358,7 @@ def remove_conflicts_from_graph(g, n, conflicts):
 def resolve_conflicts_step3(g, conflicts, beginning):
     # Step 3: take the one with the more ancestors
     nodes_to_remove = set()
+    non_conflict = set()
     n_ancestors = dict()
     for c in conflicts:
         last_n_a = -1
@@ -314,16 +371,23 @@ def resolve_conflicts_step3(g, conflicts, beginning):
             n_a = n_ancestors[n]
             if n_a > last_n_a:
                 last_n_a = n_a
-                to_keep_succ.add(dag.descendants(g, n))
+                for node in dag.descendants(g, n):
+                    to_keep_succ.add(node)
                 to_keep_succ.add(n)
+        l = []
         for n in c:
             n_a = n_ancestors[n]
             if n_a < last_n_a:
                 # print "removing", str(hex(int(n.addr)))
                 if n not in to_keep_succ:
                     nodes_to_remove.add(n)
+                else:
+                    l.append(n)
+
+        non_conflict.add(frozenset(l))
 
     n_removed = remove_nodes(g, nodes_to_remove)
+    # update_conflicts(g, conflicts, non_conflict)
     update_conflicts(g, conflicts)
     return n_removed
 
@@ -399,8 +463,8 @@ def resolve_conflicts(g, conflicts, beginning):
     print "Solving", len(conflicts), "conflicts."
     iterate_step(resolve_conflicts_step1, g, conflicts, beginning)
     print "After step 1,", len(conflicts), "conflicts remain."
-    # iterate_step(resolve_conflicts_step2, g, conflicts, beginning)
-    # print "After step 2,", len(conflicts), "conflicts remain."
+    iterate_step(resolve_conflicts_step2, g, conflicts, beginning)
+    print "After step 2,", len(conflicts), "conflicts remain."
     # iterate_step(resolve_conflicts_step3, g, conflicts, beginning)
     # print "After step 3,", len(conflicts), "conflicts remain."
     # iterate_step(resolve_conflicts_step4, g, conflicts, beginning)
