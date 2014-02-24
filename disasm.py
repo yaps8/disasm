@@ -8,41 +8,63 @@ import distorm3
 import networkx as nx
 from networkx import dag
 from random import randrange
-import matplotlib.pyplot as plt
-import pydot
+from r2 import r_core
+# from  import Enum
+# import matplotlib.pyplot as plt
+# import pydot
+
+useRadare = True
 
 
-def target(str):
-    t = str.split()
-    if t[0] in ["jz", "jnz", "jmp"]:
-        target = int(t[1],16)
-        if t[0] == "jmp":
-            return True, target, False, False
-        else:
-            return True, target, True, False
-    elif t[0] in ["call"]:
-        return False, 0, False, True
-    else:
-        return False, 0, False, False
+def hi(a):
+    return hex(int(a))
 
 
 class Instruction:
-    def __init__(self, d_inst):
-        self.addr = d_inst[0]
-        self.size = d_inst[1]
-        self.desc = d_inst[2].lower()
-        i, t, jcc, call = target(d_inst[2].lower())
-        self.is_call = call
-        self.has_target = i
-        self.target = t
-        self.is_jcc = jcc
+    def __init__(self, addr, size, desc, is_call, has_target, target, is_jcc, disas_seq):
+        self.addr = addr
+        self.size = size
+        self.desc = desc
+        self.is_call = is_call
+        self.has_target = has_target
+        self.target = target
+        self.is_jcc = is_jcc
+        self.disas_seq = disas_seq
+
+    @staticmethod
+    def target(str):
+        t = str.split()
+        if t[0] in ["jz", "jnz", "jmp"]:
+            target = int(t[1],16)
+            if t[0] == "jmp":
+                return True, target, False, False
+            else:
+                return True, target, True, False
+        elif t[0] in ["call"]:
+            return False, 0, False, True
+        else:
+            return False, 0, False, False
+
+    @staticmethod
+    def inst_from_distorm(d_inst):
+        addr = d_inst[0]
+        size = d_inst[1]
+        desc = d_inst[2].lower()
+        i, t, jcc, call = Instruction.target(d_inst[2].lower())
+        is_call = call
+        has_target = i
+        target = t
+        is_jcc = jcc
+        return Instruction(addr, size, desc, is_call, has_target, target, is_jcc, True)
 
     def __str__(self):
         s = str(hex(int(self.addr))) + ", " + str(hex(int(self.size))) + ", " + self.desc
         if self.has_target:
-            s += ", target: " + hex(self.target)
+            s += ", target: " + hex(int(self.target))
         if self.is_jcc:
             s += ", is_jcc"
+        if not self.disas_seq:
+            s += ", not disas_seq"
         s += "."
         return s
 
@@ -67,7 +89,9 @@ class BasicBlock:
     def insts_to_str(self):
         s = ""
         for i in self.insts:
-            inst = disas_at(i, f, fsize)
+            inst = disas_at_r2(i, f, fsize)
+            if inst.desc is None:
+                print "None"
             s += str(hex(int(inst.addr))) + " " + inst.desc + "\\n"
         return s
 
@@ -86,14 +110,120 @@ else:
 f = open(path, "rb")
 fsize = os.path.getsize(path)
 
+rc = r_core.RCore()
+rc.assembler.set_syntax(1)  # Intel syntax
+rc.assembler.set_bits(32) # 32/64 bits
+rc.file_open(path, 0, 0)
+rc.bin_load("", 0)
 
-def disas_at(offset, f, size):
+
+def disas_at_distorm(offset, f, size):
     if offset < size:
         f.seek(offset)
         l = distorm3.Decode(offset, f.read(min(16, size-offset)), distorm3.Decode32Bits)[0]
-        return Instruction(l)
+        return Instruction.inst_from_distorm(l)
     else:
         print "Error in disas_at"
+
+
+class OpType:
+    R_ANAL_OP_TYPE_COND  = int(0x80000000)
+    R_ANAL_OP_TYPE_REP   = int(0x40000000) # /* repeats next instruction N times */
+    R_ANAL_OP_TYPE_NULL  = 0
+    R_ANAL_OP_TYPE_JMP   = 1 # /* mandatory jump */
+    R_ANAL_OP_TYPE_UJMP  = 2 # /* unknown jump (register or so) */
+    R_ANAL_OP_TYPE_CJMP  = R_ANAL_OP_TYPE_COND | R_ANAL_OP_TYPE_JMP # /* conditional jump */
+    R_ANAL_OP_TYPE_CALL  = 3  # /* call to subroutine (branch+link) */
+    R_ANAL_OP_TYPE_UCALL = 4  # /* unknown call (register or so) */
+    R_ANAL_OP_TYPE_RET   = 5  # /* returns from subrutine */
+    R_ANAL_OP_TYPE_CRET  = R_ANAL_OP_TYPE_COND | R_ANAL_OP_TYPE_RET # /* returns from subrutine */
+    R_ANAL_OP_TYPE_ILL   = 6  # /* illegal instruction // trap */
+    R_ANAL_OP_TYPE_UNK   = 7  # /* unknown opcode type */
+    R_ANAL_OP_TYPE_NOP   = 8  # /* does nothing */
+    R_ANAL_OP_TYPE_MOV   = 9  # /* register move */
+    R_ANAL_OP_TYPE_TRAP  = 10  # /* it's a trap! */
+    R_ANAL_OP_TYPE_SWI   = 11  # /* syscall, software interrupt */
+    R_ANAL_OP_TYPE_UPUSH = 12  # /* unknown push of data into stack */
+    R_ANAL_OP_TYPE_PUSH  = 13  # /* push value into stack */
+    R_ANAL_OP_TYPE_POP   = 14  # /* pop value from stack to register */
+    R_ANAL_OP_TYPE_CMP   = 15  # /* copmpare something */
+    R_ANAL_OP_TYPE_ADD   = 16
+    R_ANAL_OP_TYPE_SUB   = 17
+    R_ANAL_OP_TYPE_IO    = 18
+    R_ANAL_OP_TYPE_MUL   = 19
+    R_ANAL_OP_TYPE_DIV   = 20
+    R_ANAL_OP_TYPE_SHR   = 21
+    R_ANAL_OP_TYPE_SHL   = 22
+    R_ANAL_OP_TYPE_SAL   = 23
+    R_ANAL_OP_TYPE_SAR   = 24
+    R_ANAL_OP_TYPE_OR    = 25
+    R_ANAL_OP_TYPE_AND   = 26
+    R_ANAL_OP_TYPE_XOR   = 27
+    R_ANAL_OP_TYPE_NOT   = 28
+    R_ANAL_OP_TYPE_STORE = 29  # /* store from register to memory */
+    R_ANAL_OP_TYPE_LOAD  = 30  # /* load from memory to register */
+    R_ANAL_OP_TYPE_LEA   = 31
+    R_ANAL_OP_TYPE_LEAVE = 32
+    R_ANAL_OP_TYPE_ROR   = 33
+    R_ANAL_OP_TYPE_ROL   = 34
+    R_ANAL_OP_TYPE_XCHG  = 35
+    R_ANAL_OP_TYPE_MOD   = 36
+    R_ANAL_OP_TYPE_SWITCH = 37
+
+
+def disas_at_r2(offset, f, size):
+    # print "disas at", hex(int(offset)), "size:", hex(int(size))
+
+    if offset < size:
+        # print "anal"
+        anal_op = rc.op_anal(offset)
+        # print "anal done"
+        addr = anal_op.addr
+        size = anal_op.size
+        desc = rc.op_str(offset)
+
+        optype = anal_op.type & 0xff
+        disas_seq = True
+        if optype == OpType.R_ANAL_OP_TYPE_JMP or optype == OpType.R_ANAL_OP_TYPE_CALL:
+            # print int(anal_op.jump)
+            disas_seq = False
+            has_target = True
+            target = anal_op.jump
+        else:
+            has_target = False
+            target = None
+
+        if optype == OpType.R_ANAL_OP_TYPE_UCALL or optype == OpType.R_ANAL_OP_TYPE_UJMP:
+            disas_seq = False
+
+        # print "type", anal_op.type
+        # print "t & 0xff", anal_op.type & 0xff
+        # print "abs(t >> 31)", abs(anal_op.type >> 31)
+
+        conditional = abs(anal_op.type >> 31)
+        if conditional != 0:
+            is_jcc = True
+        else:
+            is_jcc = False
+
+        is_call = False
+        if optype == OpType.R_ANAL_OP_TYPE_CALL:
+            is_call = True
+
+        if desc is None and optype == OpType.R_ANAL_OP_TYPE_ILL:
+            desc = "(illegal)"
+
+        # print "done"
+        return Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq)
+    else:
+        print "Error in disas_at_r2"
+
+
+def disas_at(offset, f, size):
+    if useRadare:
+        return disas_at_r2(offset, f, size)
+    else:
+        return disas_at_distorm(offset, f, size)
 
 
 def get_first_block_having(g, inst):
@@ -111,7 +241,7 @@ def split_block(b, addr, g):
     g.add_node(b2)
     for e in g.out_edges(b, data=True):
         u, v, d = e
-        g.add_edge(b2, v, attr_dict=d)
+        connect_to(g, b2, v, d['color'])
         g.remove_edge(u, v)
     connect_to(g, b, b2)
     b.size = addr - b.addr
@@ -120,14 +250,21 @@ def split_block(b, addr, g):
 
 
 def connect_to(g, block, b, color="black"):
+    # print "connecting", "["+hi(block.addr), hi(block.size+block.addr-1)+"]", "["+hi(b.addr), hi(b.size+b.addr-1)+"]"
     g.add_edge(block, b, color=color)
+
+
+def addr_to_block(g, addr):
+    for n in g.nodes():
+        if addr in n.insts:
+            return n
 
 
 def make_basic_block(beginning, end, addr, g, f, fsize):
     block = BasicBlock(addr)
 
     while beginning <= addr <= end:
-        inst = disas_at(addr, f, fsize)
+        inst = disas_at_r2(addr, f, fsize)
         (exist, b) = get_first_block_having(g, inst)
 
         if exist:
@@ -149,15 +286,19 @@ def make_basic_block(beginning, end, addr, g, f, fsize):
                 target = inst.target
                 if beginning <= target <= end:
                     b = make_basic_block(beginning, end, target, g, f, fsize)
+                    block = addr_to_block(g, addr)
+                    b = addr_to_block(g, target)
                     connect_to(g, block, b, "red")
 
                 if inst.is_jcc:
                     b = make_basic_block(beginning, end, addr + inst.size, g, f, fsize)
+                    block = addr_to_block(g, addr)
+                    b = addr_to_block(g, addr + inst.size)
                     connect_to(g, block, b)
 
                 return block
             else:
-                if inst.is_call:
+                if not inst.disas_seq:
                     return block
                 else:
                     addr += inst.size
@@ -167,7 +308,7 @@ def make_basic_block(beginning, end, addr, g, f, fsize):
 def conflict_in_subset(conflict, conflicts):
     for c in conflicts:
         if c != conflict and conflict.issubset(c):
-            print "subset of conflict detected!"
+            # print "subset of conflict detected!"
             return True
     return False
 
@@ -241,7 +382,6 @@ def update_conflicts(g, conflicts, non_conflicts=None):
         conflicts.remove(c)
     for c in conflicts_to_add:
         conflicts.add(c)
-
 
 
 def remove_nodes(g, nodes):
@@ -463,12 +603,12 @@ def resolve_conflicts(g, conflicts, beginning):
     print "Solving", len(conflicts), "conflicts."
     iterate_step(resolve_conflicts_step1, g, conflicts, beginning)
     print "After step 1,", len(conflicts), "conflicts remain."
-    iterate_step(resolve_conflicts_step2, g, conflicts, beginning)
-    print "After step 2,", len(conflicts), "conflicts remain."
-    # iterate_step(resolve_conflicts_step3, g, conflicts, beginning)
-    # print "After step 3,", len(conflicts), "conflicts remain."
-    # iterate_step(resolve_conflicts_step4, g, conflicts, beginning)
-    # print "After step 4,", len(conflicts), "conflicts remain."
+    # iterate_step(resolve_conflicts_step2, g, conflicts, beginning)
+    # print "After step 2,", len(conflicts), "conflicts remain."
+    iterate_step(resolve_conflicts_step3, g, conflicts, beginning)
+    print "After step 3,", len(conflicts), "conflicts remain."
+    iterate_step(resolve_conflicts_step4, g, conflicts, beginning)
+    print "After step 4,", len(conflicts), "conflicts remain."
     # iterate_step(resolve_conflicts_step5, g, conflicts, beginning)
     # print "After step 5,", len(conflicts), "conflicts remain."
 
@@ -488,21 +628,55 @@ def draw_conflicts(g, conflicts):
 def disas_segment(beginning, end, f, fsize):
     g = nx.MultiDiGraph()
     for a in range(beginning, end):
-        inst = disas_at(a, f, fsize)
+        inst = disas_at_r2(a, f, fsize)
         if inst.has_target or inst.addr == beginning:
+        # if inst.addr == beginning:
             make_basic_block(beginning, end, a, g, f, fsize)
     conflicts = compute_conflicts(g, beginning, end)
-    resolve_conflicts(g, conflicts, beginning)
+    # resolve_conflicts(g, conflicts, beginning)
     print len(conflicts), "conflicts remain."
     draw_conflicts(g, conflicts)
     return g
 
 
 def disas_file(f, fsize):
-    return disas_segment(0, fsize - 1, f, fsize)
+    # return disas_segment(0, fsize - 1, f, fsize)
+    return disas_segment(0x6e5b, fsize-1, f, fsize)
+    # return disas_segment(0x6e5b, 0x6e8a, f, fsize)
 
 
-# g = disas_segment(0, fsize-1, f, fsize)
+def print_graph_to_file(path, g, ep_addr):
+    f = open(path, 'wb')
+    f.write("digraph G {\n")
+    for n in g.nodes():
+        if n.addr == ep_addr:
+            f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n) + "\", "
+                    "style=\"bold, filled\", fillcolor=orange]\n")
+        else:
+            f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n) + "\"]\n")
+
+    for e in g.edges(data=True):
+        u, v, d = e
+        f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) + "\" [color=" + d['color'] + "]\n")
+    f.write("}")
+
+# g = nx.MultiDiGraph()
+# g.add_node(2, "e")
+# g.add_node(3, "g")
+# g.add_node(4, "m")
 g = disas_file(f, fsize)
-nx.draw_graphviz(g)
-nx.write_dot(g, 'file.dot')
+print_graph_to_file("file.dot", g, 0x6e5b)
+
+#
+# nx.draw_graphviz(g)
+# nx.write_dot(g, 'file.dot')
+
+# print disas_at_r2(0x6e67, f, fsize)
+#
+# for a in range(fsize):
+#     i1 = disas_at_distorm(a, f, fsize)
+#     i2 = disas_at_r2(a, f, fsize)
+#     print str(hex(int(a)))
+#     print "Distorm:", i1
+#     print "Radare2:", i2
+#     print ""
