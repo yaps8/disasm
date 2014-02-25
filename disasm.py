@@ -178,9 +178,9 @@ def disas_at_r2(offset, f, size):
         # print "anal"
         anal_op = rc.op_anal(offset)
         # print "anal done"
-        addr = anal_op.addr
-        size = anal_op.size
-        desc = rc.op_str(offset)
+        addr = int(anal_op.addr)
+        size = int(anal_op.size)
+        desc = str(rc.op_str(offset))
 
         optype = anal_op.type & 0xff
         disas_seq = True
@@ -188,7 +188,7 @@ def disas_at_r2(offset, f, size):
             # print int(anal_op.jump)
             disas_seq = False
             has_target = True
-            target = anal_op.jump
+            target = int(anal_op.jump)
         else:
             has_target = False
             target = None
@@ -237,14 +237,14 @@ def get_first_block_having(g, inst):
 def split_block(b, addr, g):
     b2 = BasicBlock(addr)
     b2.insts = [x for x in b.insts if x >= addr]
-    b2.size = b.addr - addr + b.size
+    b2.size = int(b.addr - addr + b.size)
     g.add_node(b2)
     for e in g.out_edges(b, data=True):
         u, v, d = e
         connect_to(g, b2, v, d['color'])
         g.remove_edge(u, v)
     connect_to(g, b, b2)
-    b.size = addr - b.addr
+    b.size = int(addr - b.addr)
     b.insts = [x for x in b.insts if x < addr]
     return b2
 
@@ -409,6 +409,7 @@ def resolve_conflicts_step1(g, conflicts, beginning):
     # On prend tous les successeurs du point d'entrée (incluant le pe)
     # En cas de conflit, un successeur est préféré à un non successeur
     # Si aucun ou deux successeurs : on garde les deux
+    # TODO : WTF ?
     nodes_to_remove = set()
     non_conflict = set()
     for n in g.nodes():
@@ -416,22 +417,36 @@ def resolve_conflicts_step1(g, conflicts, beginning):
             succ = g.successors(n)
             succ.append(n)
             break
+    # for nn in succ:
+    #     print nn, id(nn)
+    # print set_to_str(succ)
+    # print id(n)
+    # print
     for c in conflicts:
         l = []
         # print "solving", set_to_str(c)
         set_from_succ = set()
         set_not_from_succ = set()
         for n in c:
+            # print "n:", n, id(n)
+            # print "ids:"
+            # for nn in succ:
+            #     print id(nn)
+            # print "/ids"
             if n in succ:
                 set_from_succ.add(n)
             elif n not in succ:
                 set_not_from_succ.add(n)
-        succ = all_reachable_from_set(set_from_succ, g)
+        # print "conflit:", set_to_str(c)
+        # print "succ:", set_to_str(set_from_succ)
+        # print "not succ:", set_to_str(set_not_from_succ)
+        # print ""
+        all_succ = all_reachable_from_set(set_from_succ, g)
         if set_from_succ:
             # print "removing", set_to_str(set_not_from_succ)
             for n in set_not_from_succ:
                 nodes_to_remove.add(n)
-            for n in succ.intersection(set_from_succ):
+            for n in all_succ.intersection(set_from_succ):
                 l.append(n)
 
     n_removed = remove_nodes(g, nodes_to_remove)
@@ -603,8 +618,8 @@ def resolve_conflicts(g, conflicts, beginning):
     print "Solving", len(conflicts), "conflicts."
     iterate_step(resolve_conflicts_step1, g, conflicts, beginning)
     print "After step 1,", len(conflicts), "conflicts remain."
-    # iterate_step(resolve_conflicts_step2, g, conflicts, beginning)
-    # print "After step 2,", len(conflicts), "conflicts remain."
+    iterate_step(resolve_conflicts_step2, g, conflicts, beginning)
+    print "After step 2,", len(conflicts), "conflicts remain."
     iterate_step(resolve_conflicts_step3, g, conflicts, beginning)
     print "After step 3,", len(conflicts), "conflicts remain."
     iterate_step(resolve_conflicts_step4, g, conflicts, beginning)
@@ -633,15 +648,16 @@ def disas_segment(beginning, end, f, fsize):
         # if inst.addr == beginning:
             make_basic_block(beginning, end, a, g, f, fsize)
     conflicts = compute_conflicts(g, beginning, end)
-    # resolve_conflicts(g, conflicts, beginning)
+    resolve_conflicts(g, conflicts, beginning)
     print len(conflicts), "conflicts remain."
+    print_conflicts(conflicts)
     draw_conflicts(g, conflicts)
     return g
 
 
 def disas_file(f, fsize):
-    # return disas_segment(0, fsize - 1, f, fsize)
-    return disas_segment(0x6e5b, fsize-1, f, fsize)
+    return disas_segment(0, fsize - 1, f, fsize)
+    # return disas_segment(0x6e5b, fsize-1, f, fsize)
     # return disas_segment(0x6e5b, 0x6e8a, f, fsize)
 
 
