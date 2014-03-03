@@ -640,8 +640,8 @@ def disas_segment(beginning, end, f, fsize):
 
 
 def disas_file(f, fsize):
-    # return disas_segment(0, fsize - 1, f, fsize)
-    return disas_segment(0x6e5b, fsize-1, f, fsize)
+    return disas_segment(0, fsize - 1, f, fsize)
+    # return disas_segment(0x6e5b, fsize-1, f, fsize)
     # return disas_segment(0x6e5b, 0x6e8a, f, fsize)
 
 
@@ -665,13 +665,13 @@ def print_graph_to_file(path, g, ep_addr):
 # g.add_node(3, "g")
 # g.add_node(4, "m")
 g = disas_file(f, fsize)
-print_graph_to_file("file.dot", g, 0x6e5b)
+print_graph_to_file("file.dot", g, 0x00)
 
 #
 # nx.draw_graphviz(g)
 # nx.write_dot(g, 'file.dot')
 
-# print disas_at_r2(0x6e67, f, fsize)
+# print disas_at_r2(0x6e6d, f, fsize)
 #
 # for a in range(fsize):
 #     i1 = disas_at_distorm(a, f, fsize)
