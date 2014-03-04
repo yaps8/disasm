@@ -7,7 +7,8 @@ if len(sys.argv) > 1:
 
 rc = r_core.RCore()
 # rc.file_open("/usr/bin/id", 0, 0)
-rc.file_open("/home/aurelien/workspace/disasm/ex.bin", 0, 0)
+# rc.file_open("/home/aurelien/workspace/disasm/ex.bin", 0, 0)
+rc.file_open("/home/aurelien/workspace/disasm/upx-stub.bin", 0, 0)
 rc.bin_load("", 0)
 
 # rc.anal_all()
@@ -33,6 +34,10 @@ hex = ""
 print rc.anal.op_hexstr(addr, hex)
 print hex
 
+rc.assembler.set_bits(32) # 32/64 bits
+rc.cmd_str("s 0x139")
+s=rc.cmd_str("ao")
+print s
 # print("0x%x %s %s" % (0, asm_op.buf_hex, asm_op.buf_asm))
 
 

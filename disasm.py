@@ -179,16 +179,18 @@ def disas_at_r2(offset, f, size):
         anal_op = rc.op_anal(offset)
         # print "anal done"
         addr = int(anal_op.addr)
-        size = int(anal_op.size)
+        size = abs(int(anal_op.size))
         desc = str(rc.op_str(offset))
 
         optype = anal_op.type & 0xff
         disas_seq = True
+        print "optype:", anal_op.type,"ptr:" , anal_op.ptr, "family:", anal_op.family, "fail:", anal_op.fail
         if optype == OpType.R_ANAL_OP_TYPE_JMP or optype == OpType.R_ANAL_OP_TYPE_CALL:
             # print int(anal_op.jump)
             disas_seq = False
             has_target = True
             target = int(anal_op.jump)
+            # print "target:", target
         else:
             has_target = False
             target = None
@@ -214,7 +216,9 @@ def disas_at_r2(offset, f, size):
             desc = "(illegal)"
 
         # print "done"
-        return Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq)
+        i = Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq)
+        print i
+        return i
     else:
         print "Error in disas_at_r2"
 
@@ -648,7 +652,7 @@ def disas_segment(beginning, end, f, fsize):
         # if inst.addr == beginning:
             make_basic_block(beginning, end, a, g, f, fsize)
     conflicts = compute_conflicts(g, beginning, end)
-    resolve_conflicts(g, conflicts, beginning)
+    # resolve_conflicts(g, conflicts, beginning)
     print len(conflicts), "conflicts remain."
     print_conflicts(conflicts)
     draw_conflicts(g, conflicts)
@@ -689,10 +693,10 @@ print_graph_to_file("file.dot", g, 0x00)
 
 # print disas_at_r2(0x6e6d, f, fsize)
 #
-# for a in range(fsize):
-#     i1 = disas_at_distorm(a, f, fsize)
-#     i2 = disas_at_r2(a, f, fsize)
-#     print str(hex(int(a)))
-#     print "Distorm:", i1
-#     print "Radare2:", i2
-#     print ""
+for a in range(fsize):
+    i1 = disas_at_distorm(a, f, fsize)
+    i2 = disas_at_r2(a, f, fsize)
+    print str(hex(int(a)))
+    print "Distorm:", i1
+    print "Radare2:", i2
+    print ""
