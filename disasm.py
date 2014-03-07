@@ -99,8 +99,8 @@ class BasicBlock:
         return [hex(int(i)) for i in self.insts]
 
     def __str__(self):
-        return "[" + str(hex(int(self.addr))) + " -> " + str(hex(int(self.addr+self.size-1))) \
-               + "] (" + str(hex(int(self.size))) + ")" + " \\n " + self.insts_to_str()
+        return "BB [" + str(hex(int(self.addr))) + " -> " + str(hex(int(self.addr+self.size-1))) \
+               + "] (" + str(hex(int(self.size))) + ")" + "\\n" + self.insts_to_str()
 
 if len(sys.argv) > 1:
     path = sys.argv[1]
@@ -111,10 +111,22 @@ f = open(path, "rb")
 fsize = os.path.getsize(path)
 
 rc = r_core.RCore()
-rc.assembler.set_syntax(1)  # Intel syntax
-rc.assembler.set_bits(32) # 32/64 bits
+# rc.assembler.set_syntax(1)  # Intel syntax
+rc.config.set_i('asm.arch', 32)
+rc.assembler.set_bits(32)
+rc.anal.set_bits(32)
 rc.file_open(path, 0, 0)
 rc.bin_load("", 0)
+
+call_blacklist = set()
+call_blacklist.add("call dword [edi-0x7d]")
+call_blacklist.add("call 0xc10d7257")
+call_blacklist.add("call dword [eax-0x3d7cfd75]")
+call_blacklist.add("call far dword [esi-0x77]")
+call_blacklist.add("call dword [esi+0x5494]")
+call_blacklist.add("call dword [esi+0x5498]")
+call_blacklist.add("call dword [esi+0x54a8]")
+call_blacklist.add("call ebp")
 
 
 def disas_at_distorm(offset, f, size):
@@ -181,13 +193,13 @@ def disas_at_r2(offset, f, size):
         addr = int(anal_op.addr)
         size = abs(int(anal_op.size))
         desc = str(rc.op_str(offset))
-
         optype = anal_op.type & 0xff
         disas_seq = True
-        print "optype:", anal_op.type,"ptr:" , anal_op.ptr, "family:", anal_op.family, "fail:", anal_op.fail
-        if optype == OpType.R_ANAL_OP_TYPE_JMP or optype == OpType.R_ANAL_OP_TYPE_CALL:
+        # print "optype:", anal_op.type,"ptr:" , anal_op.ptr, "family:", anal_op.family, "fail:", anal_op.fail
+        if optype == OpType.R_ANAL_OP_TYPE_JMP or (optype == OpType.R_ANAL_OP_TYPE_CALL and desc not in call_blacklist):
             # print int(anal_op.jump)
-            disas_seq = False
+            if optype == OpType.R_ANAL_OP_TYPE_JMP:
+                disas_seq = False
             has_target = True
             target = int(anal_op.jump)
             # print "target:", target
@@ -195,7 +207,8 @@ def disas_at_r2(offset, f, size):
             has_target = False
             target = None
 
-        if optype == OpType.R_ANAL_OP_TYPE_UCALL or optype == OpType.R_ANAL_OP_TYPE_UJMP:
+        # if optype == OpType.R_ANAL_OP_TYPE_UCALL or (optype == OpType.R_ANAL_OP_TYPE_CALL and desc in call_blacklist) or optype == OpType.R_ANAL_OP_TYPE_UJMP:
+        if optype == OpType.R_ANAL_OP_TYPE_UJMP:
             disas_seq = False
 
         # print "type", anal_op.type
@@ -217,7 +230,7 @@ def disas_at_r2(offset, f, size):
 
         # print "done"
         i = Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq)
-        print i
+        # print i
         return i
     else:
         print "Error in disas_at_r2"
@@ -294,7 +307,7 @@ def make_basic_block(beginning, end, addr, g, f, fsize):
                     b = addr_to_block(g, target)
                     connect_to(g, block, b, "red")
 
-                if inst.is_jcc:
+                if inst.is_jcc or inst.is_call:
                     b = make_basic_block(beginning, end, addr + inst.size, g, f, fsize)
                     block = addr_to_block(g, addr)
                     b = addr_to_block(g, addr + inst.size)
@@ -622,12 +635,12 @@ def resolve_conflicts(g, conflicts, beginning):
     print "Solving", len(conflicts), "conflicts."
     iterate_step(resolve_conflicts_step1, g, conflicts, beginning)
     print "After step 1,", len(conflicts), "conflicts remain."
-    iterate_step(resolve_conflicts_step2, g, conflicts, beginning)
-    print "After step 2,", len(conflicts), "conflicts remain."
-    iterate_step(resolve_conflicts_step3, g, conflicts, beginning)
-    print "After step 3,", len(conflicts), "conflicts remain."
-    iterate_step(resolve_conflicts_step4, g, conflicts, beginning)
-    print "After step 4,", len(conflicts), "conflicts remain."
+    # iterate_step(resolve_conflicts_step2, g, conflicts, beginning)
+    # print "After step 2,", len(conflicts), "conflicts remain."
+    # iterate_step(resolve_conflicts_step3, g, conflicts, beginning)
+    # print "After step 3,", len(conflicts), "conflicts remain."
+    # iterate_step(resolve_conflicts_step4, g, conflicts, beginning)
+    # print "After step 4,", len(conflicts), "conflicts remain."
     # iterate_step(resolve_conflicts_step5, g, conflicts, beginning)
     # print "After step 5,", len(conflicts), "conflicts remain."
 
@@ -648,8 +661,8 @@ def disas_segment(beginning, end, f, fsize):
     g = nx.MultiDiGraph()
     for a in range(beginning, end):
         inst = disas_at_r2(a, f, fsize)
-        if inst.has_target or inst.addr == beginning:
-        # if inst.addr == beginning:
+        # if inst.has_target or inst.addr == beginning:
+        if inst.addr == beginning: #or inst.addr == 0x4:
             make_basic_block(beginning, end, a, g, f, fsize)
     conflicts = compute_conflicts(g, beginning, end)
     # resolve_conflicts(g, conflicts, beginning)
@@ -668,16 +681,20 @@ def disas_file(f, fsize):
 def print_graph_to_file(path, g, ep_addr):
     f = open(path, 'wb')
     f.write("digraph G {\n")
+    f.write("labeljust=r\n")
     for n in g.nodes():
         if n.addr == ep_addr:
-            f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n) + "\", "
+            f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n).replace("\\n", "\l") + "\", shape=box, "
                     "style=\"bold, filled\", fillcolor=orange]\n")
         else:
-            f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n) + "\"]\n")
+            f.write("\"" + hex(int(n.addr)) + "\"" + " [labeljust=r,label=\"" + str(n).replace("\\n", "\l") + "\", shape=box]\n")
 
     for e in g.edges(data=True):
         u, v, d = e
-        f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) + "\" [color=" + d['color'] + "]\n")
+        if d['color'] == "green":
+            f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) + "\" [style=dotted,arrowhead=none,color=" + d['color'] + "]\n")
+        else:
+            f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) + "\" [color=" + d['color'] + "]\n")
     f.write("}")
 
 # g = nx.MultiDiGraph()
