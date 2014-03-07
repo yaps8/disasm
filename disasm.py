@@ -99,8 +99,8 @@ class BasicBlock:
         return [hex(int(i)) for i in self.insts]
 
     def __str__(self):
-        return "[" + str(hex(int(self.addr))) + " -> " + str(hex(int(self.addr+self.size-1))) \
-               + "] (" + str(hex(int(self.size))) + ")" + " \\n " + self.insts_to_str()
+        return "BB [" + str(hex(int(self.addr))) + " -> " + str(hex(int(self.addr+self.size-1))) \
+               + "] (" + str(hex(int(self.size))) + ")" + "\\n" + self.insts_to_str()
 
 if len(sys.argv) > 1:
     path = sys.argv[1]
@@ -662,10 +662,10 @@ def disas_segment(beginning, end, f, fsize):
     for a in range(beginning, end):
         inst = disas_at_r2(a, f, fsize)
         # if inst.has_target or inst.addr == beginning:
-        if inst.addr == beginning:
+        if inst.addr == beginning: #or inst.addr == 0x4:
             make_basic_block(beginning, end, a, g, f, fsize)
     conflicts = compute_conflicts(g, beginning, end)
-    resolve_conflicts(g, conflicts, beginning)
+    # resolve_conflicts(g, conflicts, beginning)
     print len(conflicts), "conflicts remain."
     print_conflicts(conflicts)
     draw_conflicts(g, conflicts)
@@ -681,17 +681,18 @@ def disas_file(f, fsize):
 def print_graph_to_file(path, g, ep_addr):
     f = open(path, 'wb')
     f.write("digraph G {\n")
+    f.write("labeljust=r\n")
     for n in g.nodes():
         if n.addr == ep_addr:
-            f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n) + "\", shape=box, "
+            f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n).replace("\\n", "\l") + "\", shape=box, "
                     "style=\"bold, filled\", fillcolor=orange]\n")
         else:
-            f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n) + "\", shape=box]\n")
+            f.write("\"" + hex(int(n.addr)) + "\"" + " [labeljust=r,label=\"" + str(n).replace("\\n", "\l") + "\", shape=box]\n")
 
     for e in g.edges(data=True):
         u, v, d = e
         if d['color'] == "green":
-            f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) + "\" [arrowhead=none,color=" + d['color'] + "]\n")
+            f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) + "\" [style=dotted,arrowhead=none,color=" + d['color'] + "]\n")
         else:
             f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) + "\" [color=" + d['color'] + "]\n")
     f.write("}")
