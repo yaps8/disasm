@@ -1,3 +1,4 @@
 ex.bin :
 virtual offset 8048000
 r2 -b 32 upx-stub.bin
+nasm -f elf32 running-ex.asm; ld -m elf_i386 -s -o running-ex running-ex.o
