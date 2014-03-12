@@ -16,6 +16,25 @@ from r2 import r_core
 useRadare = True
 
 
+def dict_op():
+    opcodes = dict()
+    total = 0
+    for line in open('traces/opcodes'):
+        total += 1
+        opc = line.lower()[0:-1]
+        if opcodes.has_key(opc):
+            opcodes[opc] += 1
+        else:
+            opcodes[opc] = 1
+
+    op_prop = dict()
+    for op in opcodes.keys():
+        ratio = 1000 * (float(opcodes[op]) / float(total))
+        op_prop[op] = ratio
+        # print opcodes[op], "(", str(ratio)[0:5], "%%)", op
+    return op_prop
+
+
 def hi(a):
     return hex(int(a))
 
@@ -117,6 +136,8 @@ rc.assembler.set_bits(32)
 rc.anal.set_bits(32)
 rc.file_open(path, 0, 0)
 rc.bin_load("", 0)
+
+op_chance_1000 = dict_op()
 
 call_blacklist = set()
 call_blacklist.add("call dword [edi-0x7d]")
@@ -657,6 +678,35 @@ def draw_conflicts(g, conflicts):
         connect_to(g, n1, n2, "green")
 
 
+def remove_bad_prop(g):
+    nodes_to_remove = set()
+    for n in g.nodes():
+        inst = disas_at(n.insts[0], f, fsize)
+        op0 = inst.desc.split(" ")[0]
+        if not op_chance_1000.has_key(op0):
+            print "not", op0
+            p = 0
+        else:
+            p = op_chance_1000[op0]
+            print "has", op0, p
+
+        if p == 0:
+            nodes_to_remove.add(n)
+            color = "black"
+        elif p < 0.1:
+            nodes_to_remove.add(n)
+            color = "brown"
+        elif p < 1:
+            nodes_to_remove.add(n)
+            color = "red"
+        elif p < 5:
+            color = "pink"
+        else:
+            color = "blue"
+
+    remove_nodes(g, nodes_to_remove)
+
+
 def disas_segment(beginning, end, f, fsize):
     g = nx.MultiDiGraph()
     for a in range(beginning, end):
@@ -664,8 +714,10 @@ def disas_segment(beginning, end, f, fsize):
         # if inst.has_target or inst.addr == beginning:
         if inst.addr == beginning: #or inst.addr == 0x4:
             make_basic_block(beginning, end, a, g, f, fsize)
-    conflicts = compute_conflicts(g, beginning, end)
+    # conflicts = compute_conflicts(g, beginning, end)
     # resolve_conflicts(g, conflicts, beginning)
+    # remove_bad_prop(g)
+    conflicts = compute_conflicts(g, beginning, end)
     print len(conflicts), "conflicts remain."
     print_conflicts(conflicts)
     draw_conflicts(g, conflicts)
@@ -678,16 +730,40 @@ def disas_file(f, fsize):
     # return disas_segment(0x6e5b, 0x6e8a, f, fsize)
 
 
-def print_graph_to_file(path, g, ep_addr):
+def print_graph_to_file(path, g, ep_addr, f, fsize):
     f = open(path, 'wb')
     f.write("digraph G {\n")
     f.write("labeljust=r\n")
+
     for n in g.nodes():
+        inst = disas_at(n.insts[0], f, fsize)
+        op0 = inst.desc.split(" ")[0]
+        if not op_chance_1000.has_key(op0):
+            print "not", op0
+            p = 0
+        else:
+            p = op_chance_1000[op0]
+            print "has", op0, p
+
+        # color = "white"
+
+        if p == 0:
+            color = "black"
+        elif p < 0.1:
+            color = "brown"
+        elif p < 1:
+            color = "red"
+        elif p < 5:
+            color = "pink"
+        else:
+            color = "blue"
+
         if n.addr == ep_addr:
             f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n).replace("\\n", "\l") + "\", shape=box, "
                     "style=\"bold, filled\", fillcolor=orange]\n")
         else:
-            f.write("\"" + hex(int(n.addr)) + "\"" + " [labeljust=r,label=\"" + str(n).replace("\\n", "\l") + "\", shape=box]\n")
+            f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n).replace("\\n", "\l") + "\", shape=box, "
+                    "style=\"bold, filled\", fillcolor=" + color + "]\n")
 
     for e in g.edges(data=True):
         u, v, d = e
@@ -702,7 +778,7 @@ def print_graph_to_file(path, g, ep_addr):
 # g.add_node(3, "g")
 # g.add_node(4, "m")
 g = disas_file(f, fsize)
-print_graph_to_file("file.dot", g, 0x00)
+print_graph_to_file("file.dot", g, 0x00, f, fsize)
 
 #
 # nx.draw_graphviz(g)
@@ -710,10 +786,10 @@ print_graph_to_file("file.dot", g, 0x00)
 
 # print disas_at_r2(0x6e6d, f, fsize)
 #
-for a in range(fsize):
-    i1 = disas_at_distorm(a, f, fsize)
-    i2 = disas_at_r2(a, f, fsize)
-    print str(hex(int(a)))
-    print "Distorm:", i1
-    print "Radare2:", i2
-    print ""
+# for a in range(fsize):
+#     i1 = disas_at_distorm(a, f, fsize)
+#     i2 = disas_at_r2(a, f, fsize)
+#     print str(hex(int(a)))
+#     print "Distorm:", i1
+#     print "Radare2:", i2
+#     print ""
