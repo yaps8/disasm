@@ -121,6 +121,20 @@ class BasicBlock:
         return "BB [" + str(hex(int(self.addr))) + " -> " + str(hex(int(self.addr+self.size-1))) \
                + "] (" + str(hex(int(self.size))) + ")" + "\\n" + self.insts_to_str()
 
+
+def trace_from_path(path):
+    i = 0
+    for line in open(path):
+        i += 1
+        if "#" not in line:
+            key = int(line, 16)
+            if key in trace:
+                trace[key].append(i)
+            else:
+                trace[key] = [i]
+    return trace
+
+
 if len(sys.argv) > 1:
     path = sys.argv[1]
 else:
@@ -141,6 +155,10 @@ if len(sys.argv) > 4:
     virtual_offset = int(sys.argv[4], 16)
 else:
     virtual_offset = 0
+
+trace = dict()
+if len(sys.argv) > 5:
+    trace_from_path(sys.argv[5])
 
 rc = r_core.RCore()
 # rc.assembler.set_syntax(1)  # Intel syntax
@@ -763,11 +781,19 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr):
     f.write("digraph G {\n")
     f.write("labeljust=r\n")
     for n in g.nodes():
+        if n.addr in trace:
+            ordres = str(trace[n.addr])
+            color = "pink"
+        else:
+            ordres = ""
+            color = "white"
+
         if n.addr == ep_addr:
             f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n).replace("\\n", "\l") + "\", shape=box, "
                     "style=\"bold, filled\", fillcolor=orange]\n")
         else:
-            f.write("\"" + hex(int(n.addr)) + "\"" + " [labeljust=r,label=\"" + str(n).replace("\\n", "\l") + "\", shape=box]\n")
+            f.write("\"" + hex(int(n.addr)) + "\"" + " [labeljust=r,label=\"" + ordres + ", " + str(n).replace("\\n", "\l") +
+                    "\", shape=box, style=\"bold, filled\", fillcolor=" + color + "]\n")
 
     for e in g.edges(data=True):
         u, v, d = e
