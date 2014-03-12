@@ -108,7 +108,7 @@ class BasicBlock:
     def insts_to_str(self):
         s = ""
         for i in self.insts:
-            inst = disas_at_r2(i, f, fsize)
+            inst = disas_at_r2(i, virtual_offset, beginning, end, f)
             if inst.desc is None:
                 print "None"
             s += str(hex(int(inst.addr))) + " " + inst.desc + "\\n"
@@ -220,10 +220,10 @@ class OpType:
 
 def disas_at_r2(addr, virtual_offset, beginning, end, f):
     # print "disas at", hex(int(offset)), "size:", hex(int(size))
-    print "beg", hi(beginning)
-    print "end", hi(end)
-    print "virt", hi(virtual_offset)
-    print "addr", hi(addr)
+    # print "beg", hi(beginning)
+    # print "end", hi(end)
+    # print "virt", hi(virtual_offset)
+    # print "addr", hi(addr)
 
     if beginning <= addr <= end:
         # print "anal"
@@ -267,8 +267,6 @@ def disas_at_r2(addr, virtual_offset, beginning, end, f):
         if desc is None and optype == OpType.R_ANAL_OP_TYPE_ILL:
             desc = "(illegal)"
 
-        # print "done"
-        print "r2inst", hi(addr)
         i = Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq)
         if i is None:
             print "NONE"
@@ -308,6 +306,16 @@ def split_block(b, addr, g):
     return b2
 
 
+def split_all_blocks(g):
+    c = 1
+    while c != 0:
+        c = 0
+        for n in g.nodes():
+            if len(n.insts) > 1:
+                c += 1
+                split_block(n, n.insts[1], g)
+
+
 def connect_to(g, block, b, color="black"):
     # print "connecting", "["+hi(block.addr), hi(block.size+block.addr-1)+"]", "["+hi(b.addr), hi(b.size+b.addr-1)+"]"
     g.add_edge(block, b, color=color)
@@ -322,13 +330,8 @@ def addr_to_block(g, addr):
 def make_basic_block(beginning, end, virtual_offset, addr, g, f, fsize):
     block = BasicBlock(addr)
 
-    print "test"
-    print hi(beginning), hi(addr - virtual_offset), hi(addr), hi(virtual_offset), hi(end)
     while beginning <= addr <= end:
-        print "bouh", addr
         inst = disas_at_r2(addr, virtual_offset, beginning, end, f)
-        if inst is None:
-            print "wtf"
         (exist, b) = get_first_block_having(g, inst)
 
         if exist:
@@ -759,9 +762,7 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr):
     f = open(path, 'wb')
     f.write("digraph G {\n")
     f.write("labeljust=r\n")
-    print "oh"
     for n in g.nodes():
-        print "ah"
         if n.addr == ep_addr:
             f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n).replace("\\n", "\l") + "\", shape=box, "
                     "style=\"bold, filled\", fillcolor=orange]\n")
@@ -781,6 +782,7 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr):
 # g.add_node(3, "g")
 # g.add_node(4, "m")
 g = disas_file(beginning, end, virtual_offset, f)
+split_all_blocks(g)
 print_graph_to_file("file.dot", virtual_offset, g, beginning)
 
 #
