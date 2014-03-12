@@ -129,6 +129,19 @@ else:
 f = open(path, "rb")
 fsize = os.path.getsize(path)
 
+if len(sys.argv) > 3:
+    beginning = int(sys.argv[2], 16)
+    end = int(sys.argv[3], 16)
+
+else:
+    beginning = 0
+    end = fsize - 1
+
+if len(sys.argv) > 4:
+    virtual_offset = int(sys.argv[4], 16)
+else:
+    virtual_offset = 0
+
 rc = r_core.RCore()
 # rc.assembler.set_syntax(1)  # Intel syntax
 rc.config.set_i('asm.arch', 32)
@@ -150,10 +163,11 @@ call_blacklist.add("call dword [esi+0x54a8]")
 call_blacklist.add("call ebp")
 
 
-def disas_at_distorm(offset, f, size):
-    if offset < size:
-        f.seek(offset)
-        l = distorm3.Decode(offset, f.read(min(16, size-offset)), distorm3.Decode32Bits)[0]
+def disas_at_distorm(addr, virtual_offset, beginning, end, f):
+    if beginning <= addr <= end:
+        f.seek(addr)
+        l = distorm3.Decode(addr, f.read(min(16, end-addr)), distorm3.Decode32Bits)[0]
+        l[0] += virtual_offset
         return Instruction.inst_from_distorm(l)
     else:
         print "Error in disas_at"
@@ -204,16 +218,20 @@ class OpType:
     R_ANAL_OP_TYPE_SWITCH = 37
 
 
-def disas_at_r2(offset, f, size):
+def disas_at_r2(addr, virtual_offset, beginning, end, f):
     # print "disas at", hex(int(offset)), "size:", hex(int(size))
+    print "beg", hi(beginning)
+    print "end", hi(end)
+    print "virt", hi(virtual_offset)
+    print "addr", hi(addr)
 
-    if offset < size:
+    if beginning <= addr <= end:
         # print "anal"
-        anal_op = rc.op_anal(offset)
+        anal_op = rc.op_anal(addr)
         # print "anal done"
-        addr = int(anal_op.addr)
+        addr = int(anal_op.addr) + virtual_offset
         size = abs(int(anal_op.size))
-        desc = str(rc.op_str(offset))
+        desc = str(rc.op_str(addr))
         optype = anal_op.type & 0xff
         disas_seq = True
         # print "optype:", anal_op.type,"ptr:" , anal_op.ptr, "family:", anal_op.family, "fail:", anal_op.fail
@@ -250,18 +268,21 @@ def disas_at_r2(offset, f, size):
             desc = "(illegal)"
 
         # print "done"
+        print "r2inst", hi(addr)
         i = Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq)
+        if i is None:
+            print "NONE"
         # print i
         return i
     else:
         print "Error in disas_at_r2"
 
 
-def disas_at(offset, f, size):
+def disas_at(addr, virtual_offset, beginning, end, f):
     if useRadare:
-        return disas_at_r2(offset, f, size)
+        return disas_at_r2(addr, virtual_offset, beginning, end, f)
     else:
-        return disas_at_distorm(offset, f, size)
+        return disas_at_distorm(addr, virtual_offset, beginning, end, f)
 
 
 def get_first_block_having(g, inst):
@@ -298,11 +319,16 @@ def addr_to_block(g, addr):
             return n
 
 
-def make_basic_block(beginning, end, addr, g, f, fsize):
+def make_basic_block(beginning, end, virtual_offset, addr, g, f, fsize):
     block = BasicBlock(addr)
 
+    print "test"
+    print hi(beginning), hi(addr - virtual_offset), hi(addr), hi(virtual_offset), hi(end)
     while beginning <= addr <= end:
-        inst = disas_at_r2(addr, f, fsize)
+        print "bouh", addr
+        inst = disas_at_r2(addr, virtual_offset, beginning, end, f)
+        if inst is None:
+            print "wtf"
         (exist, b) = get_first_block_having(g, inst)
 
         if exist:
@@ -323,13 +349,13 @@ def make_basic_block(beginning, end, addr, g, f, fsize):
             if inst.has_target:
                 target = inst.target
                 if beginning <= target <= end:
-                    b = make_basic_block(beginning, end, target, g, f, fsize)
+                    b = make_basic_block(beginning, end, virtual_offset, target, g, f, fsize)
                     block = addr_to_block(g, addr)
                     b = addr_to_block(g, target)
                     connect_to(g, block, b, "red")
 
                 if inst.is_jcc or inst.is_call:
-                    b = make_basic_block(beginning, end, addr + inst.size, g, f, fsize)
+                    b = make_basic_block(beginning, end, virtual_offset, addr + inst.size, g, f, fsize)
                     block = addr_to_block(g, addr)
                     b = addr_to_block(g, addr + inst.size)
                     connect_to(g, block, b)
@@ -707,63 +733,40 @@ def remove_bad_prop(g):
     remove_nodes(g, nodes_to_remove)
 
 
-def disas_segment(beginning, end, f, fsize):
+def disas_segment(beginning, end, virtual_offset, f):
     g = nx.MultiDiGraph()
     for a in range(beginning, end):
-        inst = disas_at_r2(a, f, fsize)
+        inst = disas_at(a, virtual_offset, beginning, end, f)
         # if inst.has_target or inst.addr == beginning:
+        # print hi(inst.addr), hi(virtual_offset)
         if inst.addr == beginning: #or inst.addr == 0x4:
-            make_basic_block(beginning, end, a, g, f, fsize)
-    # conflicts = compute_conflicts(g, beginning, end)
-    # resolve_conflicts(g, conflicts, beginning)
-    # remove_bad_prop(g)
+            make_basic_block(beginning, end, virtual_offset, a, g, f, fsize)
     conflicts = compute_conflicts(g, beginning, end)
+    # resolve_conflicts(g, conflicts, beginning)
     print len(conflicts), "conflicts remain."
     print_conflicts(conflicts)
     draw_conflicts(g, conflicts)
     return g
 
 
-def disas_file(f, fsize):
-    return disas_segment(0, fsize - 1, f, fsize)
+def disas_file(beginning, end, virtual_offset, f):
+    return disas_segment(beginning, end, virtual_offset, f)
     # return disas_segment(0x6e5b, fsize-1, f, fsize)
     # return disas_segment(0x6e5b, 0x6e8a, f, fsize)
 
 
-def print_graph_to_file(path, g, ep_addr, f, fsize):
+def print_graph_to_file(path, virtual_offset, g, ep_addr):
     f = open(path, 'wb')
     f.write("digraph G {\n")
     f.write("labeljust=r\n")
-
+    print "oh"
     for n in g.nodes():
-        inst = disas_at(n.insts[0], f, fsize)
-        op0 = inst.desc.split(" ")[0]
-        if not op_chance_1000.has_key(op0):
-            print "not", op0
-            p = 0
-        else:
-            p = op_chance_1000[op0]
-            print "has", op0, p
-
-        # color = "white"
-
-        if p == 0:
-            color = "black"
-        elif p < 0.1:
-            color = "brown"
-        elif p < 1:
-            color = "red"
-        elif p < 5:
-            color = "pink"
-        else:
-            color = "blue"
-
+        print "ah"
         if n.addr == ep_addr:
             f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n).replace("\\n", "\l") + "\", shape=box, "
                     "style=\"bold, filled\", fillcolor=orange]\n")
         else:
-            f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n).replace("\\n", "\l") + "\", shape=box, "
-                    "style=\"bold, filled\", fillcolor=" + color + "]\n")
+            f.write("\"" + hex(int(n.addr)) + "\"" + " [labeljust=r,label=\"" + str(n).replace("\\n", "\l") + "\", shape=box]\n")
 
     for e in g.edges(data=True):
         u, v, d = e
@@ -777,8 +780,8 @@ def print_graph_to_file(path, g, ep_addr, f, fsize):
 # g.add_node(2, "e")
 # g.add_node(3, "g")
 # g.add_node(4, "m")
-g = disas_file(f, fsize)
-print_graph_to_file("file.dot", g, 0x00, f, fsize)
+g = disas_file(beginning, end, virtual_offset, f)
+print_graph_to_file("file.dot", virtual_offset, g, beginning)
 
 #
 # nx.draw_graphviz(g)
@@ -787,8 +790,8 @@ print_graph_to_file("file.dot", g, 0x00, f, fsize)
 # print disas_at_r2(0x6e6d, f, fsize)
 #
 # for a in range(fsize):
-#     i1 = disas_at_distorm(a, f, fsize)
-#     i2 = disas_at_r2(a, f, fsize)
+#     i1 = disas_at_distorm(a, virtual_offset, beginning, end, f)
+#     i2 = disas_at_r2(a, virtual_offset, beginning, end, f)
 #     print str(hex(int(a)))
 #     print "Distorm:", i1
 #     print "Radare2:", i2
