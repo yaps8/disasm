@@ -760,8 +760,8 @@ def disas_segment(beginning, end, virtual_offset, f):
         inst = disas_at(a, virtual_offset, beginning, end, f)
         # if inst.has_target or inst.addr == beginning:
         # print hi(inst.addr), hi(virtual_offset)
-        if inst.addr == beginning: #or inst.addr == 0x4:
-            make_basic_block(beginning, end, virtual_offset, a, g, f, fsize)
+        # if inst.addr == beginning: #or inst.addr == 0x4:
+        make_basic_block(beginning, end, virtual_offset, a, g, f, fsize)
     conflicts = compute_conflicts(g, beginning, end)
     # resolve_conflicts(g, conflicts, beginning)
     print len(conflicts), "conflicts remain."
@@ -781,19 +781,40 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr):
     f.write("digraph G {\n")
     f.write("labeljust=r\n")
     for n in g.nodes():
+        inst = disas_at(n.insts[0], virtual_offset, beginning, end, f)
+        op0 = inst.desc.split(" ")[0]
+        if not op0 in op_chance_1000:
+            print "not", op0
+            p = 0
+        else:
+            p = op_chance_1000[op0]
+            print "has", op0, p
+
+        if p == 0:
+            color = "\"#000000\""
+        elif p < 0.1:
+            color = "\"#000022\""
+        elif p < 1:
+            color = "\"#000055\""
+        elif p < 5:
+            color = "\"#000077\""
+        else:
+            color = "\"#0000bb\""
+
         if n.addr in trace:
             ordres = str(trace[n.addr])
-            color = "pink"
+            # color = "pink"
+            shape = "octagon"
         else:
             ordres = ""
-            color = "white"
+            shape = "box"
 
         if n.addr == ep_addr:
             f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n).replace("\\n", "\l") + "\", shape=box, "
-                    "style=\"bold, filled\", fillcolor=orange]\n")
+                    "style=\"bold, filled\", fillcolor=\"orange\"]\n")
         else:
             f.write("\"" + hex(int(n.addr)) + "\"" + " [labeljust=r,label=\"" + ordres + ", " + str(n).replace("\\n", "\l") +
-                    "\", shape=box, style=\"bold, filled\", fillcolor=" + color + "]\n")
+                    "\", shape=" + shape + ", style=\"filled\", fillcolor=" + color + "]\n")
 
     for e in g.edges(data=True):
         u, v, d = e
