@@ -16,6 +16,25 @@ from r2 import r_core
 useRadare = True
 
 
+def dict_op():
+    opcodes = dict()
+    total = 0
+    for line in open('traces/opcodes'):
+        total += 1
+        opc = line.lower()[0:-1]
+        if opcodes.has_key(opc):
+            opcodes[opc] += 1
+        else:
+            opcodes[opc] = 1
+
+    op_prop = dict()
+    for op in opcodes.keys():
+        ratio = 1000 * (float(opcodes[op]) / float(total))
+        op_prop[op] = ratio
+        # print opcodes[op], "(", str(ratio)[0:5], "%%)", op
+    return op_prop
+
+
 def hi(a):
     return hex(int(a))
 
@@ -35,16 +54,11 @@ class Instruction:
     def target(str):
         t = str.split()
         if t[0] in ["jz", "jnz", "jmp"]:
-            try:
-                hasTarget = True
-                target = int(t[1], 16)
-            except:
-                hasTarget = False
-                target = -1
+            target = int(t[1],16)
             if t[0] == "jmp":
-                return hasTarget, target, False, False
+                return True, target, False, False
             else:
-                return hasTarget, target, True, False
+                return True, target, True, False
         elif t[0] in ["call"]:
             return False, 0, False, True
         else:
@@ -82,10 +96,6 @@ class BasicBlock:
 
     def add_inst(self, inst):
         # check that the inst is just following the block
-        if inst is None:
-            print "arg"
-        if self is None:
-            print "arg2"
         if inst.addr != self.addr + self.size:
             print "Error in add_inst_to_block: inst does not follow block.", inst.addr, self.addr, self.size
         else:
@@ -98,7 +108,7 @@ class BasicBlock:
     def insts_to_str(self):
         s = ""
         for i in self.insts:
-            inst = disas_at(i, virtual_offset, beginning, end, f)
+            inst = disas_at_r2(i, virtual_offset, beginning, end, f)
             if inst.desc is None:
                 print "None"
             s += str(hex(int(inst.addr))) + " " + inst.desc + "\\n"
@@ -110,6 +120,20 @@ class BasicBlock:
     def __str__(self):
         return "BB [" + str(hex(int(self.addr))) + " -> " + str(hex(int(self.addr+self.size-1))) \
                + "] (" + str(hex(int(self.size))) + ")" + "\\n" + self.insts_to_str()
+
+
+def trace_from_path(path):
+    i = 0
+    for line in open(path):
+        i += 1
+        if "#" not in line:
+            key = int(line, 16)
+            if key in trace:
+                trace[key].append(i)
+            else:
+                trace[key] = [i]
+    return trace
+
 
 if len(sys.argv) > 1:
     path = sys.argv[1]
@@ -132,6 +156,10 @@ if len(sys.argv) > 4:
 else:
     virtual_offset = 0
 
+trace = dict()
+if len(sys.argv) > 5:
+    trace_from_path(sys.argv[5])
+
 rc = r_core.RCore()
 # rc.assembler.set_syntax(1)  # Intel syntax
 rc.config.set_i('asm.arch', 32)
@@ -139,6 +167,8 @@ rc.assembler.set_bits(32)
 rc.anal.set_bits(32)
 rc.file_open(path, 0, 0)
 rc.bin_load("", 0)
+
+op_chance_1000 = dict_op()
 
 call_blacklist = set()
 call_blacklist.add("call dword [edi-0x7d]")
@@ -208,10 +238,10 @@ class OpType:
 
 def disas_at_r2(addr, virtual_offset, beginning, end, f):
     # print "disas at", hex(int(offset)), "size:", hex(int(size))
-    print "beg", hi(beginning)
-    print "end", hi(end)
-    print "virt", hi(virtual_offset)
-    print "addr", hi(addr)
+    # print "beg", hi(beginning)
+    # print "end", hi(end)
+    # print "virt", hi(virtual_offset)
+    # print "addr", hi(addr)
 
     if beginning <= addr <= end:
         # print "anal"
@@ -255,8 +285,6 @@ def disas_at_r2(addr, virtual_offset, beginning, end, f):
         if desc is None and optype == OpType.R_ANAL_OP_TYPE_ILL:
             desc = "(illegal)"
 
-        # print "done"
-        print "r2inst", hi(addr)
         i = Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq)
         if i is None:
             print "NONE"
@@ -296,6 +324,16 @@ def split_block(b, addr, g):
     return b2
 
 
+def split_all_blocks(g):
+    c = 1
+    while c != 0:
+        c = 0
+        for n in g.nodes():
+            if len(n.insts) > 1:
+                c += 1
+                split_block(n, n.insts[1], g)
+
+
 def connect_to(g, block, b, color="black"):
     # print "connecting", "["+hi(block.addr), hi(block.size+block.addr-1)+"]", "["+hi(b.addr), hi(b.size+b.addr-1)+"]"
     g.add_edge(block, b, color=color)
@@ -310,13 +348,8 @@ def addr_to_block(g, addr):
 def make_basic_block(beginning, end, virtual_offset, addr, g, f, fsize):
     block = BasicBlock(addr)
 
-    print "test"
-    print hi(beginning), hi(addr - virtual_offset), hi(addr), hi(virtual_offset), hi(end)
     while beginning <= addr <= end:
-        print "bouh", addr
         inst = disas_at_r2(addr, virtual_offset, beginning, end, f)
-        if inst is None:
-            print "wtf"
         (exist, b) = get_first_block_having(g, inst)
 
         if exist:
@@ -692,14 +725,43 @@ def draw_conflicts(g, conflicts):
         connect_to(g, n1, n2, "green")
 
 
+def remove_bad_prop(g):
+    nodes_to_remove = set()
+    for n in g.nodes():
+        inst = disas_at(n.insts[0], f, fsize)
+        op0 = inst.desc.split(" ")[0]
+        if not op_chance_1000.has_key(op0):
+            print "not", op0
+            p = 0
+        else:
+            p = op_chance_1000[op0]
+            print "has", op0, p
+
+        if p == 0:
+            nodes_to_remove.add(n)
+            color = "black"
+        elif p < 0.1:
+            nodes_to_remove.add(n)
+            color = "brown"
+        elif p < 1:
+            nodes_to_remove.add(n)
+            color = "red"
+        elif p < 5:
+            color = "pink"
+        else:
+            color = "blue"
+
+    remove_nodes(g, nodes_to_remove)
+
+
 def disas_segment(beginning, end, virtual_offset, f):
     g = nx.MultiDiGraph()
     for a in range(beginning, end):
         inst = disas_at(a, virtual_offset, beginning, end, f)
         # if inst.has_target or inst.addr == beginning:
         # print hi(inst.addr), hi(virtual_offset)
-        if inst.addr == beginning: #or inst.addr == 0x4:
-            make_basic_block(beginning, end, virtual_offset, a, g, f, fsize)
+        # if inst.addr == beginning: #or inst.addr == 0x4:
+        make_basic_block(beginning, end, virtual_offset, a, g, f, fsize)
     conflicts = compute_conflicts(g, beginning, end)
     # resolve_conflicts(g, conflicts, beginning)
     print len(conflicts), "conflicts remain."
@@ -718,14 +780,41 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr):
     f = open(path, 'wb')
     f.write("digraph G {\n")
     f.write("labeljust=r\n")
-    print "oh"
     for n in g.nodes():
-        print "ah"
+        inst = disas_at(n.insts[0], virtual_offset, beginning, end, f)
+        op0 = inst.desc.split(" ")[0]
+        if not op0 in op_chance_1000:
+            print "not", op0
+            p = 0
+        else:
+            p = op_chance_1000[op0]
+            print "has", op0, p
+
+        if p == 0:
+            color = "\"#000000\""
+        elif p < 0.1:
+            color = "\"#000022\""
+        elif p < 1:
+            color = "\"#000055\""
+        elif p < 5:
+            color = "\"#000077\""
+        else:
+            color = "\"#0000bb\""
+
+        if n.addr in trace:
+            ordres = str(trace[n.addr])
+            # color = "pink"
+            shape = "octagon"
+        else:
+            ordres = ""
+            shape = "box"
+
         if n.addr == ep_addr:
             f.write("\"" + hex(int(n.addr)) + "\"" + " [label=\"" + str(n).replace("\\n", "\l") + "\", shape=box, "
-                    "style=\"bold, filled\", fillcolor=orange]\n")
+                    "style=\"bold, filled\", fillcolor=\"orange\"]\n")
         else:
-            f.write("\"" + hex(int(n.addr)) + "\"" + " [labeljust=r,label=\"" + str(n).replace("\\n", "\l") + "\", shape=box]\n")
+            f.write("\"" + hex(int(n.addr)) + "\"" + " [labeljust=r,label=\"" + ordres + ", " + str(n).replace("\\n", "\l") +
+                    "\", shape=" + shape + ", style=\"filled\", fillcolor=" + color + "]\n")
 
     for e in g.edges(data=True):
         u, v, d = e
@@ -740,6 +829,7 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr):
 # g.add_node(3, "g")
 # g.add_node(4, "m")
 g = disas_file(beginning, end, virtual_offset, f)
+split_all_blocks(g)
 print_graph_to_file("file.dot", virtual_offset, g, beginning)
 
 #
