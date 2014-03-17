@@ -6,6 +6,7 @@ import sys
 import os
 import distorm3
 import networkx as nx
+import colorsys
 from networkx import dag
 from random import randrange
 from r2 import r_core
@@ -19,7 +20,7 @@ useRadare = True
 def dict_op():
     opcodes = dict()
     total = 0
-    for line in open('traces/opcodes'):
+    for line in open('opcodes'):
         total += 1
         opc = line.lower()[0:-1]
         if opcodes.has_key(opc):
@@ -790,16 +791,31 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr):
             p = op_chance_1000[op0]
             print "has", op0, p
 
-        if p == 0:
-            color = "\"#000000\""
-        elif p < 0.1:
-            color = "\"#000022\""
-        elif p < 1:
-            color = "\"#000055\""
-        elif p < 5:
-            color = "\"#000077\""
-        else:
-            color = "\"#0000bb\""
+        i = int((p/100.0) * 155.0) + 100
+        print "i", i
+        i = max(i, 255)
+        alpha = "%02x" % i
+        print alpha
+        color = "\"#008b" + alpha + "\""
+        print color
+
+        print "p1000", p/1000
+        rgb = colorsys.hsv_to_rgb(0.4, max(p / 100, 1.0), 0.4)
+        print type(rgb)
+        print rgb
+        (r, gg, b) = rgb
+        color = "\"#%02x%02x%02x\"" % (r * 255.0, gg * 255.0, b * 255)
+
+        # if p == 0:
+        #     color = "\"#000000\""
+        # elif p < 0.1:
+        #     color = "\"#000022\""
+        # elif p < 1:
+        #     color = "\"#000055\""
+        # elif p < 5:
+        #     color = "\"#000077\""
+        # else:
+        #     color = "\"#0000bb\""
 
         if n.addr in trace:
             ordres = str(trace[n.addr])
