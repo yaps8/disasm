@@ -161,6 +161,11 @@ trace = dict()
 if len(sys.argv) > 5:
     trace_from_path(sys.argv[5])
 
+if len(sys.argv) > 5:
+    op_chance_1000 = dict_op()
+else:
+    op_chance_1000 = dict()
+
 rc = r_core.RCore()
 # rc.assembler.set_syntax(1)  # Intel syntax
 rc.config.set_i('asm.arch', 32)
@@ -169,7 +174,6 @@ rc.anal.set_bits(32)
 rc.file_open(path, 0, 0)
 rc.bin_load("", 0)
 
-op_chance_1000 = dict_op()
 
 call_blacklist = set()
 call_blacklist.add("call dword [edi-0x7d]")
@@ -761,8 +765,9 @@ def disas_segment(beginning, end, virtual_offset, f):
         inst = disas_at(a, virtual_offset, beginning, end, f)
         # if inst.has_target or inst.addr == beginning:
         # print hi(inst.addr), hi(virtual_offset)
-        # if inst.addr == beginning: #or inst.addr == 0x4:
-        make_basic_block(beginning, end, virtual_offset, a, g, f, fsize)
+        if inst.addr == beginning: #or inst.addr == 0x4:
+            make_basic_block(beginning, end, virtual_offset, a, g, f, fsize)
+    split_all_blocks(g)
     conflicts = compute_conflicts(g, beginning, end)
     # resolve_conflicts(g, conflicts, beginning)
     print len(conflicts), "conflicts remain."
@@ -781,31 +786,17 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr):
     f = open(path, 'wb')
     f.write("digraph G {\n")
     f.write("labeljust=r\n")
+    color="white"
     for n in g.nodes():
         inst = disas_at(n.insts[0], virtual_offset, beginning, end, f)
-        op0 = inst.desc.split(" ")[0]
-        if not op0 in op_chance_1000:
-            print "not", op0
-            p = 0
-        else:
-            p = op_chance_1000[op0]
-            print "has", op0, p
-
-        i = int((p/100.0) * 155.0) + 100
-        print "i", i
-        i = max(i, 255)
-        alpha = "%02x" % i
-        print alpha
-        color = "\"#008b" + alpha + "\""
-        print color
-
-        print "p1000", p/1000
-        rgb = colorsys.hsv_to_rgb(0.4, max(p / 100, 1.0), 0.4)
-        print type(rgb)
-        print rgb
-        (r, gg, b) = rgb
-        color = "\"#%02x%02x%02x\"" % (r * 255.0, gg * 255.0, b * 255)
-
+        # op0 = inst.desc.split(" ")[0]
+        # if not op0 in op_chance_1000:
+        #     print "not", op0
+        #     p = 0
+        # else:
+        #     p = op_chance_1000[op0]
+        #     print "has", op0, p
+        #
         # if p == 0:
         #     color = "\"#000000\""
         # elif p < 0.1:
@@ -816,7 +807,7 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr):
         #     color = "\"#000077\""
         # else:
         #     color = "\"#0000bb\""
-
+        #
         if n.addr in trace:
             ordres = str(trace[n.addr])
             # color = "pink"
@@ -835,6 +826,7 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr):
     for e in g.edges(data=True):
         u, v, d = e
         if d['color'] == "green":
+            d['color'] = "black"
             f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) + "\" [style=dotted,arrowhead=none,color=" + d['color'] + "]\n")
         else:
             f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) + "\" [color=" + d['color'] + "]\n")
@@ -845,7 +837,6 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr):
 # g.add_node(3, "g")
 # g.add_node(4, "m")
 g = disas_file(beginning, end, virtual_offset, f)
-split_all_blocks(g)
 print_graph_to_file("file.dot", virtual_offset, g, beginning)
 
 #

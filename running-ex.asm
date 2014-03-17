@@ -30,10 +30,10 @@ cmp	ecx, 2
 je	suite	
 
 junk:
-nop
-nop
-;db 0x0a
-;db 0x05
+;nop
+;nop
+db 0x0a
+db 0x05
 
 suite:
 cmp ecx, 2
