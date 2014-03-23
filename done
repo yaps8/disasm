@@ -5,3 +5,4 @@ nasm -f elf32 running-ex.asm; ld -m elf_i386 -s -o running-ex running-ex.o
 
 python2 disasm.py running-ex 0x8048060 0x80480a9
 python2 disasm.py running-ex 0x8048060 0x80480a9 0 itrace.out
+python2 disasm.py telock99-hostname.bin.exe.snapshot2 0x01006e5b 0x01006eff 0x01000000
