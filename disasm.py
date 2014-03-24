@@ -16,6 +16,24 @@ from r2 import r_core
 
 useRadare = True
 
+'''
+Colors:
+    Nodes:
+        Orange -> entrypoint (into trace)
+        Blue -> exitpoint (from trace)
+        Pink -> node in trace
+        White -> node not in trace (static analysis)
+    Edges:
+        Jump target:
+            Red -> From trace
+            Pink -> Not from trace
+        Not from trace:
+            Black -> From trace
+            Gray -> Not from trace
+
+
+
+'''
 
 def dict_op():
     opcodes = dict()
@@ -171,7 +189,6 @@ fsize = os.path.getsize(path)
 if len(sys.argv) > 3:
     beginning = int(sys.argv[2], 16)
     end = int(sys.argv[3], 16)
-
 else:
     beginning = 0
     end = fsize - 1
@@ -181,12 +198,18 @@ if len(sys.argv) > 4:
 else:
     virtual_offset = 0
 
+if len(sys.argv) > 5 and sys.argv[5] != "/":
+    entrypoint = int(sys.argv[5], 16)
+else:
+    entrypoint = beginning
+
 trace_dict = dict()
 trace_list = []
 trace_first_addr = beginning
 trace_last_addr = end
-if len(sys.argv) > 5:
-    trace_first_addr, trace_last_addr, trace_list, trace_dict = trace_from_path(sys.argv[5])
+if len(sys.argv) > 6 and sys.argv[6] != "/":
+    trace_first_addr, trace_last_addr, trace_list, trace_dict = trace_from_path(sys.argv[6])
+    entrypoint = trace_first_addr
 
 # if len(sys.argv) > 5:
 #     op_chance_1000 = dict_op()
@@ -205,7 +228,12 @@ rc = r_core.RCore()
 print path
 # rc.file_open(path, 0, 0)
 bin = rc.file_open(path, 0, virtual_offset)
-# rc.bin_load("", 0)
+
+if len(sys.argv) > 7 and sys.argv[7] == "dump":
+    print "Loading binary dump."
+else:
+    rc.bin_load("", 0)
+
 rc.config.set_i('asm.arch', 32)
 rc.assembler.set_bits(32)
 rc.anal.set_bits(32)
@@ -215,7 +243,7 @@ if end == 0:
 
 # print rc.cmd_str("s "+str(beginning))
 # print rc.cmd_str("pd 5")
-
+#
 # print rc.cmd_str("s 0")
 # print rc.cmd_str("pd 5")
 
@@ -334,6 +362,9 @@ def disas_at_r2(addr, virtual_offset, beginning, end, f):
         if desc is None and optype == OpType.R_ANAL_OP_TYPE_ILL:
             desc = "(illegal)"
 
+        if desc == "None" or desc == "(illegal)":
+            disas_seq = False
+
         i = Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq)
         if i is None:
             print "NONE"
@@ -413,13 +444,19 @@ def group_seq(g, addr_in_conflicts):
             if s and succ:
                 s2, succ2, n_out2, n_in2 = is_node_simple_and_succ(g, succ, addr_in_conflicts)
                 all_succ_from_n = True
+                all_n_to_succ = True
+
+                for e in g.out_edges(n):
+                    u, v = e
+                    if v.addr != succ.addr:
+                        all_n_to_succ = False
 
                 for e in g.in_edges(succ):
                     u, v = e
                     if u.addr != n.addr:
                         all_succ_from_n = False
 
-                if s2 and all_succ_from_n and n.addr + n.size == succ.addr \
+                if s2 and all_succ_from_n and all_n_to_succ and n.addr + n.size == succ.addr \
                         and addr_info[n.addr]['color'] == addr_info[succ.addr]['color']:
                     # regroup n and succ:
                     for i in succ.insts:
@@ -427,7 +464,7 @@ def group_seq(g, addr_in_conflicts):
                         n.add_inst(inst)
                     for e in g.out_edges(succ, data=True):
                         u, v, d = e
-                        connect_to(g, n, v, d['color'])
+                        connect_to(g, n, v, d['color'], d['st_dyn'])
                     nodes_to_remove.add(succ)
 
     for n in nodes_to_remove:
@@ -442,9 +479,19 @@ def group_all_seq(g, addr_in_conflicts):
         a = group_seq(g, addr_in_conflicts)
 
 
-def connect_to(g, block, b, color="black"):
+def connect_to(g, block, b, color="black", st_dyn="static"):
     # print "connecting", "["+hi(block.addr), hi(block.size+block.addr-1)+"]", "["+hi(b.addr), hi(b.size+b.addr-1)+"]"
-    g.add_edge(block, b, color=color)
+    if st_dyn != "static":
+        d_from = g.get_edge_data(block, b, default=None)
+        if d_from is not None:
+            for i in d_from:
+                d = d_from[i]
+                if d['st_dyn'] == "static":
+                    d['st_dyn'] = "both"
+        else:
+            g.add_edge(block, b, color=color, st_dyn=st_dyn)
+    else:
+        g.add_edge(block, b, color=color, st_dyn="static")
 
 
 def addr_to_block(g, addr):
@@ -475,6 +522,11 @@ def make_basic_block(beginning, end, virtual_offset, addr, g, f, fsize):
             if not g.has_node(block):
                 g.add_node(block)
             block.add_inst(inst)
+
+            # finding successors to disassemble from them:
+            if inst.addr == trace_last_addr:
+                return block
+
             if inst.has_target:
                 target = inst.target
                 if beginning <= target <= end:
@@ -532,7 +584,6 @@ def compute_conflicts(g, beginning, end):
             if len(addr_to_conflict[i]) >= 2:
                 addr_in_conflicts.add(i)
                 conflicts.add(frozenset(addr_to_conflict[i]))
-
 
     print "  Removing Subsets..."
     conflicts_in_subset = set()
@@ -916,9 +967,10 @@ def add_trace_edges(g, trace_list):
 
             # print u, v
             if frozenset([u, v]) not in edges_done:
-                connect_to(g, bu, bv, "pink")
+                connect_to(g, bu, bv, "red", st_dyn="dyn")
                 edges_done.add(frozenset([u, v]))
 
+    print hex(trace_list[0])
     addr_info[trace_list[0]]['color'] = "orange"
     addr_info[trace_list[-1]] = dict()
     addr_info[trace_list[-1]]['color'] = "lightblue"
@@ -927,7 +979,11 @@ def add_trace_edges(g, trace_list):
 def color_nodes(g):
     for n in g.nodes():
         addr_info[n.addr] = dict()
-        addr_info[n.addr]['color'] = "white"
+        if n.addr == entrypoint:
+            addr_info[n.addr]['color'] = "orange"
+        else:
+            addr_info[n.addr]['color'] = "white"
+
 
 def disas_segment(beginning, end, virtual_offset, f):
     g = nx.MultiDiGraph()
@@ -938,17 +994,20 @@ def disas_segment(beginning, end, virtual_offset, f):
         # if inst.has_target or inst.addr == beginning:
         # print hi(inst.addr), hi(virtual_offset)
         # if inst.addr == beginning: #or inst.addr == 0x4:
-        if inst.addr in trace_dict:
+        if inst.addr in trace_dict or inst.addr == entrypoint:
             make_basic_block(beginning, end, virtual_offset, a, g, f, fsize)
     print "Splitting blocks..."
     split_all_blocks(g)
     color_nodes(g)
-    print "Adding trace edges..."
-    add_trace_edges(g, trace_list)
+    if trace_list:
+        print "Adding trace edges..."
+        add_trace_edges(g, trace_list)
+    # print "Computing conflicts..."
+    # conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end)
+    print "Grouping sequential instructions..."
+    group_all_seq(g, dict())
     print "Computing conflicts..."
     conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end)
-    print "Grouping sequential instructions..."
-    group_all_seq(g, addr_in_conflicts)
     # resolve_conflicts(g, conflicts, beginning)
     print len(conflicts), "conflicts remain."
     print_conflicts(conflicts)
@@ -967,7 +1026,7 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr):
     f.write("digraph G {\n")
     f.write("labeljust=r\n")
     for n in g.nodes():
-        disas_at(n.insts[0], virtual_offset, beginning, end, f)
+        # disas_at(n.insts[0], virtual_offset, beginning, end, f)
         color = addr_info[n.addr]['color']
         # op0 = inst.desc.split(" ")[0]
         # if not op0 in op_chance_1000:
@@ -1006,11 +1065,23 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr):
 
     for e in g.edges(data=True):
         u, v, d = e
+        if d['st_dyn'] == "static":
+            style = "dashed"
+            penwidth = 2
+        elif d['st_dyn'] == "dyn":
+            style = "solid"
+            penwidth = 0.8
+        elif d['st_dyn'] == "both":
+            style = "bold"
+            penwidth = 3
+
         if d['color'] == "green":
             d['color'] = "black"
-            f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) + "\" [style=dotted,arrowhead=none,color=" + d['color'] + "]\n")
+            f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) +
+                    "\" [style=dotted,arrowhead=none,color=" + d['color'] + "]\n")
         else:
-            f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) + "\" [color=" + d['color'] + "]\n")
+            f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) +
+                    "\" [style="+style+", penwidth="+ str(penwidth) + ", color=" + d['color'] + "]\n")
     f.write("}")
 
 # g = nx.MultiDiGraph()
