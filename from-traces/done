@@ -1,0 +1,7 @@
+python2.7 display_binarytrace.py telock99-hostname.bin.exe_trace.out
+./addresses trace2 04 > a04
+
+for i in `seq 0 16`; do n=`printf "%02d" $i`; ./addresses_plus_size trace3 $n > trace3-addr-size$n; done
+
+for i in trace3-addr-size*; do python2 overlap.py $i; done
+python2 ../color_waves.py pespin-hostname.exe.bin.trace 
