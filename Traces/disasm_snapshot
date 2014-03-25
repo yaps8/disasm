@@ -1,0 +1,10 @@
+#!/bin/bash
+
+folder=$1
+ep=`python2 ../pe.py $1/$1.snapshot0 entrypoint`
+baseaddr=`python2 ../pe.py $1/$1.snapshot0 baseaddr`
+
+echo $ep
+echo $baseaddr
+
+

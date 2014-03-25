@@ -3,7 +3,32 @@
 list=`ls | grep tar | sed 's/\.tar.*//'`
 
 for i in `echo $list`; do
-	rm -rf $i/
-	mkdir $i
-	tar xvjf $i.tar.bz2 --strip=4 -C $i
+	echo "Processing "$i
+	if [ -e $i/untared ]; then
+		echo "skipping untar"
+	else
+		rm -rf $i/
+		mkdir $i
+		tar xjf $i.tar.bz2 --strip=4 -C $i
+		echo "Untared."
+		touch $i/untared
+	fi
+
+	if [ -e $i/"traced" ]; then
+		echo "skipping trace calc."
+	else
+		python2 ../from-traces/display_binarytrace.py $i/$i"_trace.out" > $i/$i".trace"
+		touch $i/traced
+		echo "Traced."
+	fi
+	
+	if [ -e $i/order ]; then
+		echo "skipping ordered traces"
+	else
+		n_trace=`tail -n 1 $i/$i".trace" |sed 's/_.*//'`
+		for j in `seq 0 $n_trace`; do n=`printf "%02d" $j`; ../from-traces/addresses_ordre $i/$i".trace" $n > $i/$i".trace-w"$n; done
+		touch $i/order
+		echo "Ordered "$n_trace" waves."
+	fi
+	echo ""
 done

@@ -1,0 +1,6 @@
+#!/bin/bash
+
+list=`ls | grep tar | sed 's/\.tar.*//'`
+for i in `echo $list`; do
+	rm -rf $i/
+done
