@@ -1,8 +1,11 @@
 #!/usr/bin/python
 
 import pefile
-pe =  pefile.PE('/home/aurelien/trace-packers/telock99-hostname.bin/telock99-hostname.bin.exe')
+import sys
+pe =  pefile.PE(sys.argv[1])
 
-print hex(pe.OPTIONAL_HEADER.AddressOfEntryPoint)
-print hex(pe.OPTIONAL_HEADER.ImageBase)
+if sys.argv[2] == "entrypoint":
+    print hex(pe.OPTIONAL_HEADER.AddressOfEntryPoint)
+elif sys.argv[2] == "baseaddr":
+    print hex(pe.OPTIONAL_HEADER.ImageBase)
 
