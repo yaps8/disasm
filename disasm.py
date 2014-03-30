@@ -15,7 +15,7 @@ from r2 import r_core
 # import pydot
 
 useRadare = True
-sys.setrecursionlimit(15000)
+sys.setrecursionlimit(1500000)
 
 '''
 Colors:
