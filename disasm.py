@@ -15,6 +15,7 @@ from r2 import r_core
 # import pydot
 
 useRadare = True
+sys.setrecursionlimit(15000)
 
 '''
 Colors:
@@ -248,15 +249,42 @@ if end == 0:
 # print rc.cmd_str("pd 5")
 
 
-call_blacklist = set()
-call_blacklist.add("call dword [edi-0x7d]")
-call_blacklist.add("call 0xc10d7257")
-call_blacklist.add("call dword [eax-0x3d7cfd75]")
-call_blacklist.add("call far dword [esi-0x77]")
-call_blacklist.add("call dword [esi+0x5494]")
-call_blacklist.add("call dword [esi+0x5498]")
-call_blacklist.add("call dword [esi+0x54a8]")
-call_blacklist.add("call ebp")
+# call_blacklist = set()
+# call_blacklist.add("call dword [edi-0x7d]")
+# call_blacklist.add("call 0xc10d7257")
+# call_blacklist.add("call dword [eax-0x3d7cfd75]")
+# call_blacklist.add("call far dword [esi-0x77]")
+# call_blacklist.add("call dword [esi+0x5494]")
+# call_blacklist.add("call dword [esi+0x5498]")
+# call_blacklist.add("call dword [esi+0x54a8]")
+# call_blacklist.add("call ebp")
+
+reg_set = set()
+reg_set.add("eax")
+reg_set.add("ebx")
+reg_set.add("ecx")
+# reg_set.add("cs")
+# reg_set.add("ds")
+# reg_set.add("es")
+# reg_set.add("fs")
+# reg_set.add("gs")
+# reg_set.add("ss")
+reg_set.add("esi")
+reg_set.add("edi")
+reg_set.add("ebp")
+reg_set.add("eip")
+# reg_set.add("ax")
+# reg_set.add("bx")
+# reg_set.add("cx")
+# reg_set.add("dx")
+# reg_set.add("ah")
+#reg_set.add("al")
+# reg_set.add("bh")
+# reg_set.add("bl")
+# reg_set.add("ch")
+# reg_set.add("cl")
+# reg_set.add("dh")
+# reg_set.add("dl")
 
 
 def disas_at_distorm(addr, virtual_offset, beginning, end, f):
@@ -325,13 +353,31 @@ def disas_at_r2(addr, virtual_offset, beginning, end, f):
         # print "anal"
         anal_op = rc.op_anal(addr)
         # print "anal done"
+        # print hex(addr)
         addr = int(anal_op.addr)
         size = abs(int(anal_op.size))
         desc = str(rc.op_str(addr))
         optype = anal_op.type & 0xff
         disas_seq = True
         # print "optype:", anal_op.type,"ptr:" , anal_op.ptr, "family:", anal_op.family, "fail:", anal_op.fail
-        if optype == OpType.R_ANAL_OP_TYPE_JMP or (optype == OpType.R_ANAL_OP_TYPE_CALL and desc not in call_blacklist):
+
+        if optype == OpType.R_ANAL_OP_TYPE_CALL:
+            for r in reg_set:
+                if r in desc:
+                    # print desc, "requalified as ucall"
+                    optype = OpType.R_ANAL_OP_TYPE_UCALL
+
+        # if desc in call_blacklist:
+        #     if optype == OpType.R_ANAL_OP_TYPE_CALL:
+        #         s = "call"
+        #     elif optype == OpType.R_ANAL_OP_TYPE_UCALL:
+        #         s = "ucall"
+        #     else:
+        #         s = "wtf"
+        #     print desc, "in blacklist:", s, hi(addr)
+
+        if optype == OpType.R_ANAL_OP_TYPE_JMP:
+        # or (optype == OpType.R_ANAL_OP_TYPE_CALL and desc not in call_blacklist):
             # print int(anal_op.jump)
             if optype == OpType.R_ANAL_OP_TYPE_JMP:
                 disas_seq = False
@@ -509,6 +555,7 @@ def make_basic_block(beginning, end, virtual_offset, addr, g, f, fsize):
 
         if exist:
             if addr != b.addr:
+                print "split"
                 b = split_block(b, addr, g)
 
             if block.size == 0:
@@ -546,8 +593,56 @@ def make_basic_block(beginning, end, virtual_offset, addr, g, f, fsize):
                 if not inst.disas_seq:
                     return block
                 else:
-                    addr += inst.size
+                    if not inst.disas_seq:
+                        return block
+                    else:
+                        addr += inst.size
     return block
+
+
+def addr_in_graph(g, addr):
+    for n in g.nodes():
+        if n.addr == addr:
+            return True, n
+    return False, None
+
+static_rec = 0
+def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize):
+    global static_rec
+    static_rec += 1
+    # print "static:", static_rec
+    block = BasicBlock(addr)
+    # print hex(addr)
+
+    inst = disas_at(addr, virtual_offset, beginning, end, f)
+    exists, existing_block = addr_in_graph(g, inst.addr)
+
+    if exists:
+        # print "exists"
+        return existing_block
+    else:
+        block.add_inst(inst)
+        g.add_node(block)
+        # finding successors to disassemble from them:
+        if inst.addr != trace_last_addr:
+            if inst.has_target:
+                target = inst.target
+                if beginning <= target <= end:
+                    b = make_basic_block2(beginning, end, virtual_offset, target, g, f, fsize)
+                    connect_to(g, block, b, "red")
+
+                if inst.is_jcc or inst.is_call:
+                    if beginning <= addr + inst.size <= end:
+                        b = make_basic_block2(beginning, end, virtual_offset, addr + inst.size, g, f, fsize)
+                        connect_to(g, block, b)
+            else:
+                if inst.disas_seq:
+                    if beginning <= addr + inst.size <= end:
+                        b = make_basic_block2(beginning, end, virtual_offset, addr + inst.size, g, f, fsize)
+                        connect_to(g, block, b)
+                    return block
+        return block
+
 
 
 def conflict_in_subset(conflict, conflicts):
@@ -995,9 +1090,10 @@ def disas_segment(beginning, end, virtual_offset, f):
         # print hi(inst.addr), hi(virtual_offset)
         # if inst.addr == beginning: #or inst.addr == 0x4:
         if inst.addr in trace_dict or inst.addr == entrypoint:
-            make_basic_block(beginning, end, virtual_offset, a, g, f, fsize)
-    print "Splitting blocks..."
-    split_all_blocks(g)
+            make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize)
+    # print "Splitting blocks..."
+    # split_all_blocks(g)
+    print "Coloring blocks..."
     color_nodes(g)
     if trace_list:
         print "Adding trace edges..."
@@ -1023,6 +1119,7 @@ def disas_file(beginning, end, virtual_offset, f):
 
 def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr):
     f = open(path, 'wb')
+    # f = sys.stdout
     f.write("digraph G {\n")
     f.write("labeljust=r\n")
     for n in g.nodes():
