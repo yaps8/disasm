@@ -36,6 +36,7 @@ Colors:
 
 '''
 
+
 def dict_op():
     opcodes = dict()
     total = 0
@@ -60,7 +61,7 @@ def hi(a):
 
 
 class Instruction:
-    def __init__(self, addr, size, desc, is_call, has_target, target, is_jcc, disas_seq):
+    def __init__(self, addr, size, desc, is_call, has_target, target, is_jcc, disas_seq, is_none, is_int):
         self.addr = addr
         self.size = size
         self.desc = desc
@@ -69,6 +70,8 @@ class Instruction:
         self.target = target
         self.is_jcc = is_jcc
         self.disas_seq = disas_seq
+        self.is_none = is_none
+        self.is_int = is_int
 
     @staticmethod
     def target(str):
@@ -94,7 +97,7 @@ class Instruction:
         has_target = i
         target = t
         is_jcc = jcc
-        return Instruction(addr, size, desc, is_call, has_target, target, is_jcc, True)
+        return Instruction(addr, size, desc, is_call, has_target, target, is_jcc, True, False, False)
 
     def __str__(self):
         s = str(hex(int(self.addr))) + ", " + str(hex(int(self.size))) + ", " + self.desc
@@ -163,11 +166,11 @@ class BasicBlock:
         return s
 
 
-def trace_from_path(path):
+def trace_from_path(lines):
     i = 0
     trace_dict = dict()
     trace_list = []
-    for line in open(path):
+    for line in lines:
         i += 1
         if "#" not in line:
             key = int(line, 16)
@@ -178,6 +181,47 @@ def trace_from_path(path):
                 trace_dict[key] = [i]
     return trace_list[0], trace_list[-1], trace_list, trace_dict
 
+
+def classify_calls(lines):
+    calls = dict() # addr -> +1 addr
+    return_addr = set()
+    for i in range(len(lines)):
+        l = lines[i]
+        if "_" in l:
+            a = l.split()
+            # print l
+            if len(a) >= 4:
+                # print "0:", a[0], "1:", a[1], "2:", a[2], "3:", a[3]
+                size = int(a[1][1:3], 16)
+                if a[3] == "CALL":
+                    wave, addr = a[0].split("_")
+                    # wave = int(wave)
+                    addr = int(addr, 16)
+                    if addr not in calls.keys():
+                        ret_addr = addr + size
+                        calls[addr] = ret_addr
+
+                        if i + 1 < len(lines):
+                            next_line = lines[i+1]
+                            a = next_line.split()
+                            next_wave, next_addr = a[0].split("_")
+                            next_addr = int(next_addr, 16)
+                            # print "added", hex(next_addr)
+                            return_addr.add(next_addr)
+                elif a[3] == "RET":
+                    if i + 1 < len(lines):
+                        next_line = lines[i+1]
+                        a = next_line.split()
+                        next_wave, next_addr = a[0].split("_")
+                        next_addr = int(next_addr, 16)
+                        return_addr.add(next_addr)
+
+    for a in calls.keys():
+        if calls[a] in return_addr:
+            true_call.add(a)
+        else:
+            false_call.add(a)
+    return true_call, false_call
 
 if len(sys.argv) > 1:
     path = sys.argv[1]
@@ -209,8 +253,25 @@ trace_list = []
 trace_first_addr = beginning
 trace_last_addr = end
 if len(sys.argv) > 6 and sys.argv[6] != "/":
-    trace_first_addr, trace_last_addr, trace_list, trace_dict = trace_from_path(sys.argv[6])
+    fichier = open(sys.argv[6], "rb")
+    lines = [line.strip() for line in fichier]
+    fichier.close()
+    trace_first_addr, trace_last_addr, trace_list, trace_dict = trace_from_path(lines)
     entrypoint = trace_first_addr
+
+true_call = set()
+false_call = set()
+if len(sys.argv) > 7 and sys.argv[7] != "/":
+    fichier = open(sys.argv[7], "rb")
+    lines = [line.strip() for line in fichier]
+    fichier.close()
+    true_call, false_call = classify_calls(lines)
+    # for i in true_call:
+    #     print "L", hex(i)
+    # print ""
+    # for i in false_call:
+    #     print "O", hex(i)
+
 
 # if len(sys.argv) > 5:
 #     op_chance_1000 = dict_op()
@@ -230,7 +291,7 @@ print path
 # rc.file_open(path, 0, 0)
 bin = rc.file_open(path, 0, virtual_offset)
 
-if len(sys.argv) > 7 and sys.argv[7] == "dump":
+if len(sys.argv) > 8 and sys.argv[8] == "dump":
     print "Loading binary dump."
 else:
     rc.bin_load("", 0)
@@ -342,87 +403,67 @@ class OpType:
     R_ANAL_OP_TYPE_SWITCH = 37
 
 
-def disas_at_r2(addr, virtual_offset, beginning, end, f):
-    # print "disas at", hex(int(offset)), "size:", hex(int(size))
-    # print "beg", hi(beginning)
-    # print "end", hi(end)
-    # print "virt", hi(virtual_offset)
-    # print "addr", hi(addr)
-
+def disas_at_r2(addr, beginning, end):
     if beginning <= addr <= end:
-        # print "anal"
         anal_op = rc.op_anal(addr)
-        # print "anal done"
-        # print hex(addr)
         addr = int(anal_op.addr)
         size = abs(int(anal_op.size))
         desc = str(rc.op_str(addr))
         optype = anal_op.type & 0xff
         disas_seq = True
-        # print "optype:", anal_op.type,"ptr:" , anal_op.ptr, "family:", anal_op.family, "fail:", anal_op.fail
-
+        is_call = False
+        is_jcc = False
+        has_target = False
+        target = None
+        is_none = False
+        is_int = False
         if optype == OpType.R_ANAL_OP_TYPE_CALL:
             for r in reg_set:
                 if r in desc:
-                    # print desc, "requalified as ucall"
                     optype = OpType.R_ANAL_OP_TYPE_UCALL
 
-        # if desc in call_blacklist:
-        #     if optype == OpType.R_ANAL_OP_TYPE_CALL:
-        #         s = "call"
-        #     elif optype == OpType.R_ANAL_OP_TYPE_UCALL:
-        #         s = "ucall"
-        #     else:
-        #         s = "wtf"
-        #     print desc, "in blacklist:", s, hi(addr)
-
         if optype == OpType.R_ANAL_OP_TYPE_JMP:
-        # or (optype == OpType.R_ANAL_OP_TYPE_CALL and desc not in call_blacklist):
-            # print int(anal_op.jump)
-            if optype == OpType.R_ANAL_OP_TYPE_JMP:
+            conditional = abs(anal_op.type >> 31)
+            if conditional != 0:
+                is_jcc = True
+                disas_seq = True
+            else:
+                is_jcc = False
                 disas_seq = False
             has_target = True
             target = int(anal_op.jump)
-            # print "target:", target
-        else:
-            has_target = False
-            target = None
-
-        if optype == OpType.R_ANAL_OP_TYPE_UJMP or optype == OpType.R_ANAL_OP_TYPE_RET:
+        elif optype == OpType.R_ANAL_OP_TYPE_CALL:
+            is_call = True
+            has_target = True
+            target = int(anal_op.jump)
+            if addr in false_call:
+                print "call", hex(addr), "in false_call"
+                disas_seq = False
+            else:
+                disas_seq = True
+        elif optype == OpType.R_ANAL_OP_TYPE_UJMP or optype == OpType.R_ANAL_OP_TYPE_RET:
             disas_seq = False
 
-        # print "type", anal_op.type
-        # print "t & 0xff", anal_op.type & 0xff
-        # print "abs(t >> 31)", abs(anal_op.type >> 31)
-
-        conditional = abs(anal_op.type >> 31)
-        if conditional != 0:
-            is_jcc = True
-        else:
-            is_jcc = False
-
-        is_call = False
-        if optype == OpType.R_ANAL_OP_TYPE_CALL:
-            is_call = True
+        if "int" in desc:
+            print hex(addr), ": ", desc, "->", "is int."
+            is_int = True
 
         if desc is None and optype == OpType.R_ANAL_OP_TYPE_ILL:
             desc = "(illegal)"
 
         if desc == "None" or desc == "(illegal)":
+            is_none = True
             disas_seq = False
 
-        i = Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq)
-        if i is None:
-            print "NONE"
-        # print i
+        i = Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq, is_none, is_int)
         return i
     else:
-        print "Error in disas_at_r2"
+        print "Error in disas_at_r2: not in range."
 
 
 def disas_at(addr, virtual_offset, beginning, end, f):
     if useRadare:
-        return disas_at_r2(addr, virtual_offset, beginning, end, f)
+        return disas_at_r2(addr, beginning, end)
     else:
         return disas_at_distorm(addr, virtual_offset, beginning, end, f)
 
@@ -550,7 +591,7 @@ def make_basic_block(beginning, end, virtual_offset, addr, g, f, fsize):
     block = BasicBlock(addr)
 
     while beginning <= addr <= end:
-        inst = disas_at_r2(addr, virtual_offset, beginning, end, f)
+        inst = disas_at_r2(addr, beginning, end)
         (exist, b) = get_first_block_having(g, inst)
 
         if exist:
@@ -606,21 +647,15 @@ def addr_in_graph(g, addr):
             return True, n
     return False, None
 
-static_rec = 0
-def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize):
-    global static_rec
-    static_rec += 1
-    # print "static:", static_rec
-    block = BasicBlock(addr)
-    # print hex(addr)
 
-    inst = disas_at(addr, virtual_offset, beginning, end, f)
-    exists, existing_block = addr_in_graph(g, inst.addr)
+def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize):
+    block = BasicBlock(addr)
+    exists, existing_block = addr_in_graph(g, addr)
 
     if exists:
-        # print "exists"
         return existing_block
     else:
+        inst = disas_at(addr, virtual_offset, beginning, end, f)
         block.add_inst(inst)
         g.add_node(block)
         # finding successors to disassemble from them:
@@ -631,18 +666,11 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize):
                     b = make_basic_block2(beginning, end, virtual_offset, target, g, f, fsize)
                     connect_to(g, block, b, "red")
 
-                if inst.is_jcc or inst.is_call:
-                    if beginning <= addr + inst.size <= end:
-                        b = make_basic_block2(beginning, end, virtual_offset, addr + inst.size, g, f, fsize)
-                        connect_to(g, block, b)
-            else:
-                if inst.disas_seq:
-                    if beginning <= addr + inst.size <= end:
-                        b = make_basic_block2(beginning, end, virtual_offset, addr + inst.size, g, f, fsize)
-                        connect_to(g, block, b)
-                    return block
+            if inst.disas_seq:
+                if beginning <= addr + inst.size <= end:
+                    b = make_basic_block2(beginning, end, virtual_offset, addr + inst.size, g, f, fsize)
+                    connect_to(g, block, b)
         return block
-
 
 
 def conflict_in_subset(conflict, conflicts):
