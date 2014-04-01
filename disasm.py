@@ -88,6 +88,7 @@ class Instruction:
         self.disas_seq = disas_seq
         self.is_none = is_none
         self.is_int = is_int
+        self.prob = 0.0
 
     @staticmethod
     def target(str):
@@ -131,34 +132,35 @@ class BasicBlock:
     def __init__(self, addr):
         self.addr = addr
         self.size = 0
+        self.insts_int = []
         self.insts = []
         self.head_is_none = False
 
     def add_inst(self, inst):
         # check that the inst is just following the block
         if inst.addr != self.addr + self.size:
-            print "Error in add_inst_to_block: inst does not follow block.", inst.addr, self.addr, self.size
+            print "Error in add_inst_to_block: inst does not follow block.", hi(inst.addr), hi(self.addr), self.size
         else:
             self.size += inst.size
-            self.insts.append(inst.addr)
+            self.insts_int.append(inst.addr)
+            self.insts.append(inst)
 
     def contains_inst(self, inst):
-        return inst.addr in self.insts
+        return inst.addr in self.insts_int
 
     def insts_to_str(self):
         s = ""
         skip = set()
-        for i in range(len(self.insts)):
+        for i in range(len(self.insts_int)):
             if i not in skip:
-                a_i = self.insts[i]
-                inst = disas_at(a_i, virtual_offset, beginning, end, f)
+                inst = self.insts[i]
+                p = inst.prob
                 if inst.desc is None:
                     print "None"
 
                 count = 1
-                for j in range(i + 1, len(self.insts)):
-                    a_j = self.insts[j]
-                    i_j = disas_at(a_j, virtual_offset, beginning, end, f)
+                for j in range(i + 1, len(self.insts_int)):
+                    i_j = self.insts[j]
                     if i_j.desc == inst.desc:
                         skip.add(j)
                         count += 1
@@ -169,11 +171,11 @@ class BasicBlock:
                 else:
                     s_count = " (x" + str(count) + ")"
 
-                s += str(hex(int(inst.addr))) + " " + inst.desc + s_count + "\\n"
+                s += str(hex(int(inst.addr))) + " " + inst.desc + " (P=" + str(p) + ")" + s_count + "\\n"
         return s
 
     def insts_to_hex(self):
-        return [hex(int(i)) for i in self.insts]
+        return [hex(int(i)) for i in self.insts_int]
 
     def __str__(self):
         s = "BB [" + str(hex(int(self.addr))) + " -> " + str(hex(int(self.addr+self.size-1))) \
@@ -288,6 +290,13 @@ if len(sys.argv) > 7 and sys.argv[7] != "/":
     # print ""
     # for i in false_call:
     #     print "O", hex(i)
+
+n_n_gram = 3
+n_grams = dict()
+n_grams[("mov", "mov", "sub")] = 0.4
+n_grams[("pop", "mov", "inc")] = 0.4
+n_grams[("or", "jne", "rol")] = 0.1
+n_grams[("jne", "int", "rol")] = 0.2
 
 
 # if len(sys.argv) > 5:
@@ -475,7 +484,7 @@ def disas_at_r2(addr, beginning, end):
         i = Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq, is_none, is_int)
         return i
     else:
-        print "Error in disas_at_r2: not in range."
+        print "Error in disas_at_r2 - not in range: ", addr
 
 
 def disas_at(addr, virtual_offset, beginning, end, f):
@@ -495,7 +504,7 @@ def get_first_block_having(g, inst):
 
 def split_block(b, addr, g):
     b2 = BasicBlock(addr)
-    b2.insts = [x for x in b.insts if x >= addr]
+    b2.insts_int = [x for x in b.insts_int if x >= addr]
     b2.size = int(b.addr - addr + b.size)
     g.add_node(b2)
     for e in g.out_edges(b, data=True):
@@ -504,7 +513,7 @@ def split_block(b, addr, g):
         g.remove_edge(u, v)
     connect_to(g, b, b2)
     b.size = int(addr - b.addr)
-    b.insts = [x for x in b.insts if x < addr]
+    b.insts_int = [x for x in b.insts_int if x < addr]
     return b2
 
 
@@ -513,9 +522,9 @@ def split_all_blocks(g):
     while c != 0:
         c = 0
         for n in g.nodes():
-            if len(n.insts) > 1:
+            if len(n.insts_int) > 1:
                 c += 1
-                split_block(n, n.insts[1], g)
+                split_block(n, n.insts_int[1], g)
                 # break
 
 
@@ -564,8 +573,8 @@ def group_seq(g, addr_in_conflicts):
                         and addr_info[n.addr]['color'] == addr_info[succ.addr]['color']:
                     # regroup n and succ:
                     for i in succ.insts:
-                        inst = disas_at(i, virtual_offset, beginning, end, f)
-                        n.add_inst(inst)
+                        # inst = disas_at(i, virtual_offset, beginning, end, f)
+                        n.add_inst(i)
                     for e in g.out_edges(succ, data=True):
                         u, v, d = e
                         connect_to(g, n, v, d['color'], d['st_dyn'])
@@ -600,7 +609,7 @@ def connect_to(g, block, b, color="black", st_dyn="static"):
 
 def addr_to_block(g, addr):
     for n in g.nodes():
-        if addr in n.insts:
+        if addr in n.insts_int:
             return n
 
 
@@ -665,45 +674,76 @@ def addr_in_graph(g, addr):
     return False, None
 
 
-def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize):
+def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, nm1_grams):
+    #nm1_grams list with n-n_n_gram, n-n_n_gram+1, ... n-1 inst type
     block = BasicBlock(addr)
     exists, existing_block = addr_in_graph(g, addr)
+    inst = disas_at(addr, virtual_offset, beginning, end, f)
 
     if exists:
-        return existing_block
+        block = existing_block
     else:
-        inst = disas_at(addr, virtual_offset, beginning, end, f)
         block.add_inst(inst)
-        if inst.is_none:
-            block.head_is_none = True
         g.add_node(block)
-        # finding successors to disassemble from them:
-        if inst.addr != trace_last_addr:
-            has_succ = False
-            all_succ_goto_none = True
-            if inst.has_target:
-                has_succ = True
-                target = inst.target
-                if beginning <= target <= end:
-                    b = make_basic_block2(beginning, end, virtual_offset, target, g, f, fsize)
-                    connect_to(g, block, b, "red")
-                    if not b.head_is_none:
-                        all_succ_goto_none = False
 
-            if inst.disas_seq:
-                has_succ = True
-                if beginning <= addr + inst.size <= end:
-                    b = make_basic_block2(beginning, end, virtual_offset, addr + inst.size, g, f, fsize)
-                    connect_to(g, block, b)
-                    if not b.head_is_none:
-                        all_succ_goto_none = False
+    nm1_grams = list(nm1_grams)
+    b_inst = block.insts[0]
+    # print "len", len(nm1_grams)
+    opcode = inst.desc.split()[0]
+    nm1_grams.append(opcode)
+    print hex(b_inst.addr), ":", nm1_grams
+    if len(nm1_grams) == n_n_gram:
+        # print "sized"
+        n_gram = tuple(nm1_grams)
+        print "all 3", n_gram
+        if n_gram in n_grams:
+            p = n_grams[n_gram]
+            print "p known", p, hex(b_inst.addr)
+        else:
+            p = 0.0
+        nm1_grams.pop(0)
+    else:
+        p = 1.0
 
-            if has_succ and all_succ_goto_none:
-                block.head_is_none = True
+    print hi(addr), "p:", p
 
-            if not has_succ and inst.desc != "None":
-                print hex(inst.addr), inst.desc, "is final."
-        return block
+    if p > inst.prob:
+        print "setting", p, hex(b_inst.addr)
+        b_inst.prob = p
+    else:
+        if exists:
+            return block
+
+    if b_inst.is_none:
+        block.head_is_none = True
+
+    # finding successors to disassemble from them:
+    if b_inst.addr != trace_last_addr:
+        has_succ = False
+        all_succ_goto_none = True
+        if b_inst.has_target:
+            has_succ = True
+            target = b_inst.target
+            if beginning <= target <= end:
+                b = make_basic_block2(beginning, end, virtual_offset, target, g, f, fsize, nm1_grams)
+                connect_to(g, block, b, "red")
+                if not b.head_is_none:
+                    all_succ_goto_none = False
+
+        if b_inst.disas_seq:
+            has_succ = True
+            if beginning <= b_inst.addr + b_inst.size <= end:
+                b = make_basic_block2(beginning, end, virtual_offset, b_inst.addr + b_inst.size, g, f, fsize, nm1_grams)
+                connect_to(g, block, b)
+                if not b.head_is_none:
+                    all_succ_goto_none = False
+
+        if has_succ and all_succ_goto_none:
+            block.head_is_none = True
+
+        if not has_succ and b_inst.desc != "None":
+            print hex(b_inst.addr), b_inst.desc, "is final."
+    return block
 
 
 def conflict_in_subset(conflict, conflicts):
@@ -1061,7 +1101,7 @@ def draw_conflicts(g, conflicts):
 def remove_bad_prop(g):
     nodes_to_remove = set()
     for n in g.nodes():
-        inst = disas_at(n.insts[0], f, fsize)
+        inst = disas_at(n.insts_int[0], f, fsize)
         op0 = inst.desc.split(" ")[0]
         if not op_chance_1000.has_key(op0):
             print "not", op0
@@ -1155,8 +1195,7 @@ def disas_segment(beginning, end, virtual_offset, f):
         # print hi(inst.addr), hi(virtual_offset)
         # if inst.addr == beginning: #or inst.addr == 0x4:
         if a in trace_dict or a == entrypoint:
-            inst = disas_at(a, virtual_offset, beginning, end, f)
-            make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize)
+            make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize, [])
     # print "Splitting blocks..."
     # split_all_blocks(g)
     print "Coloring blocks and removing None..."
