@@ -25,15 +25,31 @@ Colors:
         Pink -> node in trace
         White -> node not in trace (static analysis)
     Edges:
-        Jump target:
-            Red -> From trace
-            Pink -> Not from trace
-        Not from trace:
-            Black -> From trace
-            Gray -> Not from trace
+        Color:
+            Red -> Jump target
+            Black -> Next instruction
+        Shape:
+            Dashed -> From static analysis only
+            Solid -> From trace only
+            Bold -> Both
+    Conflicts:
+        Black dotted (non directional) edges
+'''
 
 
-
+'''
+Initial CFG from trace (from sub-approx):
+    (Done) Disasm all from trace (sons of trace are legitimate), stop at last trace instruction
+        With restrictions: Classify calls from trace
+    (Done) Remove error paths (None)
+    (TODO) Remove very improbabable paths
+Optimal CFG:
+    In-between...
+Static CFG (from over-approx): (TODO)
+    Disasm all addresses from the binary file
+    Take long path conflicting with iCFG
+    Take very probable paths
+    Take very connected graphs (?)
 '''
 
 
@@ -116,6 +132,7 @@ class BasicBlock:
         self.addr = addr
         self.size = 0
         self.insts = []
+        self.head_is_none = False
 
     def add_inst(self, inst):
         # check that the inst is just following the block
@@ -657,19 +674,35 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize):
     else:
         inst = disas_at(addr, virtual_offset, beginning, end, f)
         block.add_inst(inst)
+        if inst.is_none:
+            block.head_is_none = True
         g.add_node(block)
         # finding successors to disassemble from them:
         if inst.addr != trace_last_addr:
+            has_succ = False
+            all_succ_goto_none = True
             if inst.has_target:
+                has_succ = True
                 target = inst.target
                 if beginning <= target <= end:
                     b = make_basic_block2(beginning, end, virtual_offset, target, g, f, fsize)
                     connect_to(g, block, b, "red")
+                    if not b.head_is_none:
+                        all_succ_goto_none = False
 
             if inst.disas_seq:
+                has_succ = True
                 if beginning <= addr + inst.size <= end:
                     b = make_basic_block2(beginning, end, virtual_offset, addr + inst.size, g, f, fsize)
                     connect_to(g, block, b)
+                    if not b.head_is_none:
+                        all_succ_goto_none = False
+
+            if has_succ and all_succ_goto_none:
+                block.head_is_none = True
+
+            if not has_succ and inst.desc != "None":
+                print hex(inst.addr), inst.desc, "is final."
         return block
 
 
@@ -1100,28 +1133,33 @@ def add_trace_edges(g, trace_list):
 
 
 def color_nodes(g):
+    nodes_to_remove = set()
     for n in g.nodes():
         addr_info[n.addr] = dict()
         if n.addr == entrypoint:
             addr_info[n.addr]['color'] = "orange"
+        elif n.head_is_none:
+            nodes_to_remove.add(n)
         else:
             addr_info[n.addr]['color'] = "white"
 
+    for n in nodes_to_remove:
+        g.remove_node(n)
 
 def disas_segment(beginning, end, virtual_offset, f):
     g = nx.MultiDiGraph()
     print "Disassembling file..."
     for a in range(beginning, end):
-        inst = disas_at(a, virtual_offset, beginning, end, f)
         # print inst
         # if inst.has_target or inst.addr == beginning:
         # print hi(inst.addr), hi(virtual_offset)
         # if inst.addr == beginning: #or inst.addr == 0x4:
-        if inst.addr in trace_dict or inst.addr == entrypoint:
+        if a in trace_dict or a == entrypoint:
+            inst = disas_at(a, virtual_offset, beginning, end, f)
             make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize)
     # print "Splitting blocks..."
     # split_all_blocks(g)
-    print "Coloring blocks..."
+    print "Coloring blocks and removing None..."
     color_nodes(g)
     if trace_list:
         print "Adding trace edges..."
