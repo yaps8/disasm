@@ -44,5 +44,5 @@ def t_to_str(t):
 f_prob.write(str(n_n_grams) + "\n")
 for op in opcodes.keys():
     ratio = 100 * (float(opcodes[op]) / float(total))
-    f_prob.write(t_to_str(op) + " " + str(opcodes[op]) + str(ratio)[0:7] + "\n")
+    f_prob.write(t_to_str(op) + " " + str(opcodes[op]) + " " + str(ratio)[0:7] + "\n")
     #print t_to_str(op), opcodes[op], str(ratio)[0:7]
