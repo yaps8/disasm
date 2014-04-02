@@ -1226,7 +1226,7 @@ def color_nodes(g, p_seuil=0.0):
                 addr_info[n.addr]['color'] = "orange"
             elif n.head_is_none:
                 nodes_to_remove.add(n)
-            elif n.insts[0].prob < p_seuil:
+            elif n.insts[0].prob is not None and n.insts[0].prob < p_seuil:
                 addr_info[n.addr]['color'] = "lightgray"
             else:
                 addr_info[n.addr]['color'] = "white"
