@@ -1,12 +1,11 @@
 #!/usr/bin/python2.7
 # coding: utf-8
-from _socket import gaierror
 
 import sys
 import os
 import distorm3
 import networkx as nx
-import colorsys
+# import colorsys
 from networkx import dag
 from random import randrange
 from r2 import r_core
@@ -88,7 +87,7 @@ class Instruction:
         self.disas_seq = disas_seq
         self.is_none = is_none
         self.is_int = is_int
-        self.prob = 0.0
+        self.prob = None
 
     @staticmethod
     def target(str):
@@ -291,14 +290,6 @@ if len(sys.argv) > 7 and sys.argv[7] != "/":
     # for i in false_call:
     #     print "O", hex(i)
 
-n_n_gram = 3
-n_grams = dict()
-n_grams[("mov", "mov", "sub")] = 0.4
-n_grams[("pop", "mov", "inc")] = 0.4
-n_grams[("or", "jne", "rol")] = 0.1
-n_grams[("jne", "int", "rol")] = 0.2
-
-
 # if len(sys.argv) > 5:
 #     op_chance_1000 = dict_op()
 # else:
@@ -321,6 +312,22 @@ if len(sys.argv) > 8 and sys.argv[8] == "dump":
     print "Loading binary dump."
 else:
     rc.bin_load("", 0)
+
+
+n_n_gram = 3
+n_grams = dict()
+addr_to_m_gram = dict()
+n_grams[("mov", "mov", "sub")] = 0.4
+n_grams[("pop", "mov", "inc")] = 0.4
+n_grams[("or", "jne", "rol")] = 0.2
+n_grams[("jne", "int", "rol")] = 0.1
+n_grams[("int", "rol", "add")] = 0.2
+
+# if len(sys.argv) > 8 and sys.argv[8] != "/":
+#     print "Using opcodes prob."
+#
+# else:
+#     rc.bin_load("", 0)
 
 rc.config.set_i('asm.arch', 32)
 rc.assembler.set_bits(32)
@@ -674,7 +681,7 @@ def addr_in_graph(g, addr):
     return False, None
 
 
-def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, nm1_grams):
+def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram):
     #nm1_grams list with n-n_n_gram, n-n_n_gram+1, ... n-1 inst type
     block = BasicBlock(addr)
     exists, existing_block = addr_in_graph(g, addr)
@@ -686,30 +693,38 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, nm1_gra
         block.add_inst(inst)
         g.add_node(block)
 
-    nm1_grams = list(nm1_grams)
     b_inst = block.insts[0]
-    # print "len", len(nm1_grams)
-    opcode = inst.desc.split()[0]
-    nm1_grams.append(opcode)
-    print hex(b_inst.addr), ":", nm1_grams
-    if len(nm1_grams) == n_n_gram:
-        # print "sized"
-        n_gram = tuple(nm1_grams)
-        print "all 3", n_gram
-        if n_gram in n_grams:
-            p = n_grams[n_gram]
-            print "p known", p, hex(b_inst.addr)
+    m_gram = list(m_gram)
+    t = tuple(m_gram)
+
+    if addr not in addr_to_m_gram or t not in addr_to_m_gram[addr]:
+        # first time arriving there with this m_gram before
+        # print "first", hex(addr), t
+        if addr not in addr_to_m_gram:
+            addr_to_m_gram[addr] = set()
+        addr_to_m_gram[addr].add(t)
+        # print "len", len(nm1_grams)
+        opcode = inst.desc.split()[0]
+        m_gram.append(opcode)
+        # print hex(b_inst.addr), ":", m_gram
+        if len(m_gram) == n_n_gram:
+            # print "sized"
+            n_gram = tuple(m_gram)
+            # print "all 3", n_gram
+            if n_gram in n_grams:
+                p = n_grams[n_gram]
+                # print "p known", p, hex(b_inst.addr)
+            else:
+                p = 0.0
+            m_gram.pop(0)
         else:
-            p = 0.0
-        nm1_grams.pop(0)
-    else:
-        p = 1.0
+            p = None
 
-    print hi(addr), "p:", p
+        # print hi(addr), "p:", p
 
-    if p > inst.prob:
-        print "setting", p, hex(b_inst.addr)
-        b_inst.prob = p
+        if b_inst.prob is None or p > b_inst.prob:
+            # print "setting", p, hex(b_inst.addr)
+            b_inst.prob = p
     else:
         if exists:
             return block
@@ -725,16 +740,18 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, nm1_gra
             has_succ = True
             target = b_inst.target
             if beginning <= target <= end:
-                b = make_basic_block2(beginning, end, virtual_offset, target, g, f, fsize, nm1_grams)
-                connect_to(g, block, b, "red")
+                b = make_basic_block2(beginning, end, virtual_offset, target, g, f, fsize, m_gram)
+                if not exists:
+                    connect_to(g, block, b, "red")
                 if not b.head_is_none:
                     all_succ_goto_none = False
 
         if b_inst.disas_seq:
             has_succ = True
             if beginning <= b_inst.addr + b_inst.size <= end:
-                b = make_basic_block2(beginning, end, virtual_offset, b_inst.addr + b_inst.size, g, f, fsize, nm1_grams)
-                connect_to(g, block, b)
+                b = make_basic_block2(beginning, end, virtual_offset, b_inst.addr + b_inst.size, g, f, fsize, m_gram)
+                if not exists:
+                    connect_to(g, block, b)
                 if not b.head_is_none:
                     all_succ_goto_none = False
 
