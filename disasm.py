@@ -204,6 +204,7 @@ def trace_from_path(lines):
 def classify_calls(lines):
     calls = dict() # addr -> +1 addr
     return_addr = set()
+    opcodes_trace = []
     for i in range(len(lines)):
         l = lines[i]
         if "_" in l:
@@ -212,6 +213,7 @@ def classify_calls(lines):
             if len(a) >= 4:
                 # print "0:", a[0], "1:", a[1], "2:", a[2], "3:", a[3]
                 size = int(a[1][1:3], 16)
+                opcodes_trace.append(a[3].lower())
                 if a[3] == "CALL":
                     wave, addr = a[0].split("_")
                     # wave = int(wave)
@@ -240,7 +242,7 @@ def classify_calls(lines):
             true_call.add(a)
         else:
             false_call.add(a)
-    return true_call, false_call
+    return true_call, false_call, opcodes_trace
 
 
 def ngrams_from_lines(lines):
@@ -292,11 +294,12 @@ if len(sys.argv) > 6 and sys.argv[6] != "/":
 
 true_call = set()
 false_call = set()
+opcodes_trace = []
 if len(sys.argv) > 7 and sys.argv[7] != "/":
     fichier = open(sys.argv[7], "rb")
     lines = [line.strip() for line in fichier]
     fichier.close()
-    true_call, false_call = classify_calls(lines)
+    true_call, false_call, opcodes_trace = classify_calls(lines)
     # for i in true_call:
     #     print "L", hex(i)
     # print ""
@@ -336,12 +339,42 @@ addr_to_m_gram = dict()
 # n_grams[("jne", "int", "rol")] = 0.1
 # n_grams[("int", "rol", "add")] = 0.2
 
+
+def trace_ngrams(opcodes, n_n_gram):
+    m_gram = []
+    tuples = set()
+    for op in opcodes:
+        m_gram.append(op)
+        if len(m_gram) == n_n_gram:
+            t = tuple(m_gram)
+            tuples.add(t)
+            m_gram.pop(0)
+    return tuples
+
+
+quantile = 5
+p_quantile = 100.0
 if len(sys.argv) > 9 and sys.argv[9] != "/":
     print "Using opcodes prob."
     f_prob = open(sys.argv[9], "rb")
     lines = [line.strip() for line in f_prob]
     f_prob.close()
     n_n_gram, n_grams = ngrams_from_lines(lines)
+
+    p_trace = []
+    tr_grams = trace_ngrams(opcodes_trace, n_n_gram)
+    for t in tr_grams:
+        if t in n_grams:
+            p_trace.append(float(n_grams[t]))
+        else:
+            p_trace.append(0.0)
+    p_quantile = numpy.percentile(p_trace, quantile)
+    print str(quantile) + "ème centile pour les " + str(n_n_gram) + "-grams: " + str(p_quantile)
+
+
+useTrace = True
+if len(sys.argv) > 10 and sys.argv[10] == "displaytrace":
+    useTrace = False
 
 print len(n_grams)
 
@@ -488,8 +521,11 @@ def disas_at_r2(addr, beginning, end):
             has_target = True
             target = int(anal_op.jump)
             if addr in false_call:
-                print "call", hex(addr), "in false_call"
-                disas_seq = False
+                # print "call", hex(addr), "in false_call"
+                if useTrace:
+                    disas_seq = False
+                else:
+                    desc = "(obf) " + desc
             else:
                 disas_seq = True
         elif optype == OpType.R_ANAL_OP_TYPE_UJMP or optype == OpType.R_ANAL_OP_TYPE_RET:
@@ -499,7 +535,7 @@ def disas_at_r2(addr, beginning, end):
             target = addr
 
         if "int" in desc:
-            print hex(addr), ": ", desc, "->", "is int."
+            # print hex(addr), ": ", desc, "->", "is int."
             is_int = True
 
         if desc is None and optype == OpType.R_ANAL_OP_TYPE_ILL:
@@ -755,7 +791,7 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram)
         block.head_is_none = True
 
     # finding successors to disassemble from them:
-    if b_inst.addr != trace_last_addr:
+    if not useTrace or b_inst.addr != trace_last_addr:
         has_succ = False
         all_succ_goto_none = True
         if b_inst.has_target:
@@ -1166,16 +1202,12 @@ def remove_bad_prop(g):
     remove_nodes(g, nodes_to_remove)
 
 
-def add_trace_edges(g, trace_list, centile=5):
+def add_trace_edges(g, trace_list):
     edges_done = set()
     a_to_b = dict()
-    all_p = []
 
     for i in range(len(trace_list)-1):
         if beginning <= trace_list[i] <= end:
-            addr_info[trace_list[i]] = dict()
-            addr_info[trace_list[i]]['color'] = "pink"
-
             u = trace_list[i]
             v = trace_list[i+1]
 
@@ -1185,12 +1217,17 @@ def add_trace_edges(g, trace_list, centile=5):
                 has, block = get_first_block_having(g, disas_at(u, virtual_offset, beginning, end, f))
                 if has:
                     bu = block
-                    if bu.insts[0].prob is not None:
-                        all_p.append(float(bu.insts[0].prob))
                 else:
                     bu = BasicBlock(u)
                     g.add_node(bu)
                 a_to_b[u] = bu
+
+
+            addr_info[trace_list[i]] = dict()
+            if not useTrace and bu.insts[0].prob is not None and  bu.insts[0].prob <= p_quantile:
+                addr_info[trace_list[i]]['color'] = "purple"
+            else:
+                addr_info[trace_list[i]]['color'] = "pink"
 
             if v in a_to_b:
                 bv = a_to_b[v]
@@ -1198,8 +1235,6 @@ def add_trace_edges(g, trace_list, centile=5):
                 has, block = get_first_block_having(g, disas_at(v, virtual_offset, beginning, end, f))
                 if has:
                     bv = block
-                    if bv.insts[0].prob is not None:
-                        all_p.append(float(bv.insts[0].prob))
                 else:
                     bv = BasicBlock(v)
                     g.add_node(bv)
@@ -1210,11 +1245,10 @@ def add_trace_edges(g, trace_list, centile=5):
                 connect_to(g, bu, bv, "red", st_dyn="dyn")
                 edges_done.add(frozenset([u, v]))
 
-    print hex(trace_list[0])
+    # print hex(trace_list[0])
     addr_info[trace_list[0]]['color'] = "orange"
     addr_info[trace_list[-1]] = dict()
     addr_info[trace_list[-1]]['color'] = "lightblue"
-    return numpy.percentile(all_p, centile)
 
 
 def color_nodes(g, p_seuil=0.0):
@@ -1250,8 +1284,7 @@ def disas_segment(beginning, end, virtual_offset, f):
     p_seuil = 1.734e-05
     if trace_list:
         print "Adding trace edges..."
-        p_seuil = add_trace_edges(g, trace_list, 10)
-        print "Seuil du 5%:", p_seuil
+        add_trace_edges(g, trace_list)
     print "Coloring blocks and removing None..."
     color_nodes(g, p_seuil)
 

@@ -7,9 +7,11 @@ python2 disasm.py running-ex 0x8048060 0x80480a8 0 0x8048060
 python2 disasm.py running-ex 0x8048060 0 0 / itrace.out
 
 python2 disasm.py telock99-hostname.bin.exe.snapshot2 0x01000000 0 0x01000000 0x01006e5b / / dump opcodes.prob
-python2 disasm.py telock99-hostname.bin.exe.snapshot2 0x01000000 0 0x01000000 / telock/trace3-addr-ordre02 traces/trace3 dump opcodes.prob
+python2 disasm.py telock99-hostname.bin.exe.snapshot2 0x01000000 0 0x01000000 / telock/trace3-addr-ordre02 traces/trace3 dump opcodes.prob displaytrace
+python2 disasm.py telock99-hostname.bin.exe.snapshot2 0x01000000 0 0x01000000 / telock/trace3-addr-ordre02 traces/trace3 dump opcodes.prob usetrace
 
 python2 disasm.py upx-hostname.exe.bin.snapshot0 0x01000000 0 0x01000000 0x010058c0 / / dump opcodes.prob
-python2 disasm.py upx-hostname.exe.bin.snapshot0 0x01000000 0 0x01000000 / upx/upx_addr_ordre_00 traces/upx-hostname.exe.bin.trace dump opcodes.prob
+python2 disasm.py upx-hostname.exe.bin.snapshot0 0x01000000 0 0x01000000 / upx/upx_addr_ordre_00 traces/upx-hostname.exe.bin.trace dump opcodes.prob displaytrace
+python2 disasm.py upx-hostname.exe.bin.snapshot0 0x01000000 0 0x01000000 / upx/upx_addr_ordre_00 traces/upx-hostname.exe.bin.trace dump opcodes.prob usetrace
 
 r2 -b 32 -m 0x01000000 telock99-hostname.bin.exe.snapshot2 
