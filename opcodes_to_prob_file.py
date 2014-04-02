@@ -2,6 +2,7 @@
 # coding: utf-8
 
 import sys
+import decimal
 
 if len(sys.argv) > 3:
     n_n_grams = int(sys.argv[1])
@@ -43,6 +44,6 @@ def t_to_str(t):
 
 f_prob.write(str(n_n_grams) + "\n")
 for op in opcodes.keys():
-    ratio = 100 * (float(opcodes[op]) / float(total))
-    f_prob.write(t_to_str(op) + " " + str(opcodes[op]) + " " + str(ratio)[0:7] + "\n")
+    ratio = decimal.Decimal(100 * (float(opcodes[op]) / float(total)))
+    f_prob.write(t_to_str(op) + " " + str(opcodes[op]) + " " + str(ratio)[0:9] + "\n")
     #print t_to_str(op), opcodes[op], str(ratio)[0:7]

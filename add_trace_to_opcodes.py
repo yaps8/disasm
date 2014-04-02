@@ -22,4 +22,18 @@ for l in lines:
         a = l.split()
         if len(a) >= 4:
             opcode = a[3].lower()
+            if opcode == "jnz":
+                opcode = "jne"
+            elif opcode == "jz":
+                opcode = "je"
+            elif opcode == "pusha":
+                opcode = "pushad"
+            elif opcode == "popa":
+                opcode = "popad"
+            elif opcode == "repnz":
+                opcode = "repne"
+            elif opcode == "stosb":
+                opcode = "stosw"
+            elif opcode == "stosd":
+                opcode = "stosw"
             f_opcodes.write(opcode+"\n")

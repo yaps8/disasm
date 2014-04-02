@@ -12,6 +12,7 @@ from r2 import r_core
 # from  import Enum
 # import matplotlib.pyplot as plt
 # import pydot
+import numpy
 
 useRadare = True
 sys.setrecursionlimit(1500000)
@@ -241,6 +242,18 @@ def classify_calls(lines):
             false_call.add(a)
     return true_call, false_call
 
+
+def ngrams_from_lines(lines):
+    n_n_gram = int(lines.pop(0))
+    n_grams = dict()
+    for l in lines:
+        a = l.split()
+        t = tuple(a[0:n_n_gram])
+        p = a[n_n_gram + 1]
+        n_grams[t] = p
+    return n_n_gram, n_grams
+
+
 if len(sys.argv) > 1:
     path = sys.argv[1]
 else:
@@ -317,17 +330,20 @@ else:
 n_n_gram = 3
 n_grams = dict()
 addr_to_m_gram = dict()
-n_grams[("mov", "mov", "sub")] = 0.4
-n_grams[("pop", "mov", "inc")] = 0.4
-n_grams[("or", "jne", "rol")] = 0.2
-n_grams[("jne", "int", "rol")] = 0.1
-n_grams[("int", "rol", "add")] = 0.2
+# n_grams[("mov", "mov", "sub")] = 0.4
+# n_grams[("pop", "mov", "inc")] = 0.4
+# n_grams[("or", "jne", "rol")] = 0.2
+# n_grams[("jne", "int", "rol")] = 0.1
+# n_grams[("int", "rol", "add")] = 0.2
 
-# if len(sys.argv) > 8 and sys.argv[8] != "/":
-#     print "Using opcodes prob."
-#
-# else:
-#     rc.bin_load("", 0)
+if len(sys.argv) > 9 and sys.argv[9] != "/":
+    print "Using opcodes prob."
+    f_prob = open(sys.argv[9], "rb")
+    lines = [line.strip() for line in f_prob]
+    f_prob.close()
+    n_n_gram, n_grams = ngrams_from_lines(lines)
+
+print len(n_grams)
 
 rc.config.set_i('asm.arch', 32)
 rc.assembler.set_bits(32)
@@ -454,6 +470,8 @@ def disas_at_r2(addr, beginning, end):
             for r in reg_set:
                 if r in desc:
                     optype = OpType.R_ANAL_OP_TYPE_UCALL
+        elif "rep " in desc:
+            optype = OpType.R_ANAL_OP_TYPE_REP
 
         if optype == OpType.R_ANAL_OP_TYPE_JMP:
             conditional = abs(anal_op.type >> 31)
@@ -476,6 +494,9 @@ def disas_at_r2(addr, beginning, end):
                 disas_seq = True
         elif optype == OpType.R_ANAL_OP_TYPE_UJMP or optype == OpType.R_ANAL_OP_TYPE_RET:
             disas_seq = False
+        elif optype == OpType.R_ANAL_OP_TYPE_REP:
+            has_target = True
+            target = addr
 
         if "int" in desc:
             print hex(addr), ": ", desc, "->", "is int."
@@ -715,6 +736,7 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram)
                 p = n_grams[n_gram]
                 # print "p known", p, hex(b_inst.addr)
             else:
+                print n_gram, "-> P=0.0"
                 p = 0.0
             m_gram.pop(0)
         else:
@@ -1144,9 +1166,10 @@ def remove_bad_prop(g):
     remove_nodes(g, nodes_to_remove)
 
 
-def add_trace_edges(g, trace_list):
+def add_trace_edges(g, trace_list, centile=5):
     edges_done = set()
     a_to_b = dict()
+    all_p = []
 
     for i in range(len(trace_list)-1):
         if beginning <= trace_list[i] <= end:
@@ -1162,6 +1185,8 @@ def add_trace_edges(g, trace_list):
                 has, block = get_first_block_having(g, disas_at(u, virtual_offset, beginning, end, f))
                 if has:
                     bu = block
+                    if bu.insts[0].prob is not None:
+                        all_p.append(float(bu.insts[0].prob))
                 else:
                     bu = BasicBlock(u)
                     g.add_node(bu)
@@ -1173,6 +1198,8 @@ def add_trace_edges(g, trace_list):
                 has, block = get_first_block_having(g, disas_at(v, virtual_offset, beginning, end, f))
                 if has:
                     bv = block
+                    if bv.insts[0].prob is not None:
+                        all_p.append(float(bv.insts[0].prob))
                 else:
                     bv = BasicBlock(v)
                     g.add_node(bv)
@@ -1187,21 +1214,26 @@ def add_trace_edges(g, trace_list):
     addr_info[trace_list[0]]['color'] = "orange"
     addr_info[trace_list[-1]] = dict()
     addr_info[trace_list[-1]]['color'] = "lightblue"
+    return numpy.percentile(all_p, centile)
 
 
-def color_nodes(g):
+def color_nodes(g, p_seuil=0.0):
     nodes_to_remove = set()
     for n in g.nodes():
-        addr_info[n.addr] = dict()
-        if n.addr == entrypoint:
-            addr_info[n.addr]['color'] = "orange"
-        elif n.head_is_none:
-            nodes_to_remove.add(n)
-        else:
-            addr_info[n.addr]['color'] = "white"
+        if n.addr not in addr_info:
+            addr_info[n.addr] = dict()
+            if n.addr == entrypoint:
+                addr_info[n.addr]['color'] = "orange"
+            elif n.head_is_none:
+                nodes_to_remove.add(n)
+            elif n.insts[0].prob < p_seuil:
+                addr_info[n.addr]['color'] = "lightgray"
+            else:
+                addr_info[n.addr]['color'] = "white"
 
     for n in nodes_to_remove:
         g.remove_node(n)
+
 
 def disas_segment(beginning, end, virtual_offset, f):
     g = nx.MultiDiGraph()
@@ -1215,11 +1247,14 @@ def disas_segment(beginning, end, virtual_offset, f):
             make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize, [])
     # print "Splitting blocks..."
     # split_all_blocks(g)
-    print "Coloring blocks and removing None..."
-    color_nodes(g)
+    p_seuil = 1.734e-05
     if trace_list:
         print "Adding trace edges..."
-        add_trace_edges(g, trace_list)
+        p_seuil = add_trace_edges(g, trace_list, 10)
+        print "Seuil du 5%:", p_seuil
+    print "Coloring blocks and removing None..."
+    color_nodes(g, p_seuil)
+
     # print "Computing conflicts..."
     # conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end)
     print "Grouping sequential instructions..."

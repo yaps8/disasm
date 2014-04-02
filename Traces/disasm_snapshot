@@ -21,7 +21,7 @@ else
     python2 ../from-traces/overlap.py $folder/$folder.size-w$n -v > $folder/$folder"_"$n.c_trace
     n_conflicts_trace=`cat $folder/$folder"_"$n.c_trace|head -n 1 | sed 's/\ .*//'`
     echo $n_conflicts_trace" conflicts in trace."
-    python2 ../disasm.py $snapshot $baseaddr 0 $baseaddr $ep $w_trace $folder/$folder.trace dump > $folder/$folder"_"$n.log 2>$folder/$folder"_"$n.err
+    python2 ../disasm.py $snapshot $baseaddr 0 $baseaddr $ep $w_trace $folder/$folder.trace dump opcodes.prob > $folder/$folder"_"$n.log 2>$folder/$folder"_"$n.err
     n_conflicts_disasm=`grep remain $folder/$folder"_"$n.log | sed 's/\ .*//'`
     echo $n_conflicts_disasm" conflicts in disasm."
     mv file.dot $folder/$folder"_"$n.dot
