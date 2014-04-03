@@ -300,6 +300,7 @@ if len(sys.argv) > 7 and sys.argv[7] != "/":
     lines = [line.strip() for line in fichier]
     fichier.close()
     true_call, false_call, opcodes_trace = classify_calls(lines)
+    print len(true_call) + len(false_call), "calls,", len(true_call), "legitimate,", len(false_call), "obfuscated."
     # for i in true_call:
     #     print "L", hex(i)
     # print ""
@@ -525,7 +526,7 @@ def disas_at_r2(addr, beginning, end):
                 if useTrace:
                     disas_seq = False
                 else:
-                    desc = "(obf) " + desc
+                    desc = desc + " (obf)"
             else:
                 disas_seq = True
         elif optype == OpType.R_ANAL_OP_TYPE_UJMP or optype == OpType.R_ANAL_OP_TYPE_RET:
@@ -762,6 +763,8 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram)
         addr_to_m_gram[addr].add(t)
         # print "len", len(nm1_grams)
         opcode = inst.desc.split()[0]
+        if opcode == "stosb":
+            opcode = "stosw"
         m_gram.append(opcode)
         # print hex(b_inst.addr), ":", m_gram
         if len(m_gram) == n_n_gram:
