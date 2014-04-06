@@ -117,7 +117,7 @@ class Instruction:
         return Instruction(addr, size, desc, is_call, has_target, target, is_jcc, True, False, False)
 
     def __str__(self):
-        s = str(hex(int(self.addr))) + ", " + str(hex(int(self.size))) + ", " + self.desc
+        s = str(hex(int(self.addr))) + ": " + str(hex(int(self.size))) + ", " + self.desc
         if self.has_target:
             s += ", target: " + hex(int(self.target))
         if self.is_jcc:
@@ -264,14 +264,17 @@ else:
 f = open(path, "rb")
 fsize = os.path.getsize(path)
 
-if len(sys.argv) > 3:
+if len(sys.argv) > 2 and sys.argv[2] != "/":
     beginning = int(sys.argv[2], 16)
-    end = int(sys.argv[3], 16)
 else:
     beginning = 0
+
+if len(sys.argv) > 3 and sys.argv[3] != "/":
+    end = int(sys.argv[3], 16)
+else:
     end = fsize - 1
 
-if len(sys.argv) > 4:
+if len(sys.argv) > 4 and sys.argv[4] != "/":
     virtual_offset = int(sys.argv[4], 16)
 else:
     virtual_offset = 0
@@ -321,7 +324,7 @@ rc = r_core.RCore()
 # rc.config.set_i('asm.arch', 32)
 # rc.assembler.set_bits(32)
 # rc.anal.set_bits(32)
-print path
+# print path
 # rc.file_open(path, 0, 0)
 bin = rc.file_open(path, 0, virtual_offset)
 
@@ -377,7 +380,7 @@ useTrace = True
 if len(sys.argv) > 10 and sys.argv[10] == "displaytrace":
     useTrace = False
 
-print len(n_grams)
+# print len(n_grams)
 
 rc.config.set_i('asm.arch', 32)
 rc.assembler.set_bits(32)
@@ -487,6 +490,12 @@ class OpType:
 
 
 def disas_at_r2(addr, beginning, end):
+    if addr in addr_info:
+        if 'inst' in addr_info[addr]:
+            return addr_info[addr]['inst']
+    else:
+        addr_info[addr] = dict()
+
     if beginning <= addr <= end:
         anal_op = rc.op_anal(addr)
         addr = int(anal_op.addr)
@@ -545,11 +554,15 @@ def disas_at_r2(addr, beginning, end):
         if desc == "None" or desc == "(illegal)":
             is_none = True
             disas_seq = False
+            size = 1
 
         i = Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq, is_none, is_int)
-        return i
     else:
         print "Error in disas_at_r2 - not in range: ", addr
+        i = None
+
+    addr_info[addr]['inst'] = i
+    return i
 
 
 def disas_at(addr, virtual_offset, beginning, end, f):
@@ -557,6 +570,100 @@ def disas_at(addr, virtual_offset, beginning, end, f):
         return disas_at_r2(addr, beginning, end)
     else:
         return disas_at_distorm(addr, virtual_offset, beginning, end, f)
+
+
+class Layer:
+    def __init__(self):
+        self.insts = set()
+        self.debut = 0
+        self.fin = 0
+
+    def __init__(self, insts, debut, fin):
+        self.insts = insts
+        self.debut = debut
+        self.fin = fin
+
+    def __init__(self, addr):
+        self.insts = set()
+        self.debut = addr
+        a = addr
+        lasta = a
+        i = disas_at(a, virtual_offset, beginning, end, f)
+        while beginning <= a and a + i.size <= end + 1:
+            self.insts.add(a)
+            lasta = a
+            a += i.size
+            if beginning <= a <= end: #and not (a in inst_to_l and len(inst_to_l[a]) != 0):
+                i = disas_at(a, virtual_offset, beginning, end, f)
+            else:
+                break
+        self.fin = lasta
+
+    def __str__(self):
+        sorted_i = list(self.insts)
+        sorted_i.sort()
+        if sorted_i:
+            str_insts = "["
+            for i in sorted_i:
+                str_insts += hi(i) + " "
+            str_insts += "]"
+        else:
+            str_insts = ""
+        s = "Layer: (debut, fin)=(%s, %s), insts: %s" % (hi(self.debut), hi(self.fin), str_insts)
+        return s
+
+    def to_str(self, i, i_to_l, detailled=False):
+        sorted_i = list(self.insts)
+        sorted_i.sort()
+        if sorted_i:
+            str_insts = "["
+            for k in sorted_i:
+                already_seen = False
+                for j in i_to_l[k]:
+                    if j < i:
+                        already_seen = True
+                        break
+                if not already_seen:
+                    if detailled:
+                        str_insts += str(disas_at(k, virtual_offset, beginning, end, f))
+                    else:
+                        str_insts += hi(k)
+                    str_insts += " "
+
+                else:
+                    str_insts += "(cf %d)" % (j)
+                    break
+            str_insts += "]"
+        else:
+            str_insts = ""
+        s = "Layer %d: (debut, fin)=(%s, %s), insts: %s" % (i, hi(self.debut), hi(self.fin), str_insts)
+        return s
+
+
+def add_layer_to_inst_to_layers(layer, i_to_l):
+    for i in range(beginning, end + 1):
+        if i in layer.insts:
+            if i not in i_to_l:
+                i_to_l[i] = set()
+            i_to_l[i].add(layer.debut)
+
+
+def rm_layer_to_inst_to_layers(layer, i_to_l):
+    for i in range(beginning, end + 1):
+        if i in layer.insts and i in i_to_l:
+                i_to_l[i].remove(layer.debut)
+
+
+def inst_to_layers(layers):
+    i_to_l = dict()
+    for i in range(beginning, end + 1):
+        s = set()
+        for j in range(len(layers)):
+            if i in layers[j].insts:
+                s.add(j)
+        if s:
+            i_to_l[i] = s
+    return i_to_l
 
 
 def get_first_block_having(g, inst):
@@ -739,8 +846,9 @@ def addr_in_graph(g, addr):
     return False, None
 
 
-def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram):
+def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram, layers, inst_to_l):
     #nm1_grams list with n-n_n_gram, n-n_n_gram+1, ... n-1 inst type
+    sweep_layer(addr, inst_to_l, layers)
     block = BasicBlock(addr)
     exists, existing_block = addr_in_graph(g, addr)
     inst = disas_at(addr, virtual_offset, beginning, end, f)
@@ -775,7 +883,7 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram)
                 p = n_grams[n_gram]
                 # print "p known", p, hex(b_inst.addr)
             else:
-                print n_gram, "-> P=0.0"
+                # print n_gram, "-> P=0.0"
                 p = 0.0
             m_gram.pop(0)
         else:
@@ -801,7 +909,8 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram)
             has_succ = True
             target = b_inst.target
             if beginning <= target <= end:
-                b = make_basic_block2(beginning, end, virtual_offset, target, g, f, fsize, m_gram)
+                b = make_basic_block2(beginning, end, virtual_offset, target, g, f,
+                                      fsize, m_gram, layers, inst_to_l)
                 if not exists:
                     connect_to(g, block, b, "red")
                 if not b.head_is_none:
@@ -810,13 +919,15 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram)
         if b_inst.disas_seq:
             has_succ = True
             if beginning <= b_inst.addr + b_inst.size <= end:
-                b = make_basic_block2(beginning, end, virtual_offset, b_inst.addr + b_inst.size, g, f, fsize, m_gram)
+                b = make_basic_block2(beginning, end, virtual_offset, b_inst.addr + b_inst.size, g, f,
+                                      fsize, m_gram, layers, inst_to_l)
                 if not exists:
                     connect_to(g, block, b)
                 if not b.head_is_none:
                     all_succ_goto_none = False
 
-        if has_succ and all_succ_goto_none:
+        if has_succ and all_succ_goto_none and not b_inst.is_int \
+                and not ((b_inst.is_jcc or b_inst.is_call) and not b_inst.has_target):
             block.head_is_none = True
 
         if not has_succ and b_inst.desc != "None":
@@ -853,7 +964,7 @@ def compute_conflicts(g, beginning, end):
             else:
                 addr_to_conflict[i].append(n)
 
-    for i in range(beginning, end):
+    for i in range(beginning, end + 1):
         if i in addr_to_conflict:
             if len(addr_to_conflict[i]) >= 2:
                 addr_in_conflicts.add(i)
@@ -1225,8 +1336,9 @@ def add_trace_edges(g, trace_list):
                     g.add_node(bu)
                 a_to_b[u] = bu
 
+            if trace_list[i] not in addr_info:
+                addr_info[trace_list[i]] = dict()
 
-            addr_info[trace_list[i]] = dict()
             if not useTrace and bu.insts[0].prob is not None and  bu.insts[0].prob <= p_quantile:
                 addr_info[trace_list[i]]['color'] = "purple"
             else:
@@ -1250,14 +1362,15 @@ def add_trace_edges(g, trace_list):
 
     # print hex(trace_list[0])
     addr_info[trace_list[0]]['color'] = "orange"
-    addr_info[trace_list[-1]] = dict()
+    if trace_list[-1] not in addr_info:
+        addr_info[trace_list[-1]] = dict()
     addr_info[trace_list[-1]]['color'] = "lightblue"
 
 
 def color_nodes(g, p_seuil=0.0):
     nodes_to_remove = set()
     for n in g.nodes():
-        if n.addr not in addr_info:
+        if n.addr not in addr_info or 'color' not in addr_info[n.addr]:
             addr_info[n.addr] = dict()
             if n.addr == entrypoint:
                 addr_info[n.addr]['color'] = "orange"
@@ -1269,19 +1382,47 @@ def color_nodes(g, p_seuil=0.0):
                 addr_info[n.addr]['color'] = "white"
 
     for n in nodes_to_remove:
+        print "removing", hi(n.addr)
         g.remove_node(n)
+
+
+def sweep_layer(a, inst_to_l, layers):
+    if a not in inst_to_l:
+        print "Layer @" + hi(a)
+        new_l = Layer(a)
+        layers_to_remove = set()
+        for l in layers:
+            if l in new_l.insts:
+                print "layer @" + hi(l) + " being removed"
+                rm_layer_to_inst_to_layers(layers[l], inst_to_l)
+                layers_to_remove.add(l)
+        for l in layers_to_remove:
+            del layers[l]
+        layers[a] = new_l
+        add_layer_to_inst_to_layers(layers[a], inst_to_l)
+    else:
+        print "layer @" + hi(a) + " already sweeped"
 
 
 def disas_segment(beginning, end, virtual_offset, f):
     g = nx.MultiDiGraph()
-    print "Disassembling file..."
-    for a in range(beginning, end):
+    # print "Sweeping layers..."
+    # inst_to_l = sweep_layers()
+
+    print "Disassembling file and sweeping layers..."
+    inst_to_l = dict()
+    layers = dict()
+    for a in range(beginning, end + 1):
         # print inst
         # if inst.has_target or inst.addr == beginning:
         # print hi(inst.addr), hi(virtual_offset)
         # if inst.addr == beginning: #or inst.addr == 0x4:
-        if a in trace_dict or a == entrypoint:
-            make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize, [])
+        if a in trace_dict or a == entrypoint+2:
+            make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize, [], layers, inst_to_l)
+
+    make_basic_block2(beginning, end, virtual_offset, entrypoint, g, f, fsize, [], layers, inst_to_l)
+    for l in layers:
+        print layers[l]
     # print "Splitting blocks..."
     # split_all_blocks(g)
     p_seuil = 1.734e-05
@@ -1295,13 +1436,14 @@ def disas_segment(beginning, end, virtual_offset, f):
     # conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end)
     print "Grouping sequential instructions..."
     group_all_seq(g, dict())
+    print "There are", len(layers), "actives layers."
     print "Computing conflicts..."
     conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end)
     # resolve_conflicts(g, conflicts, beginning)
     print len(conflicts), "conflicts remain."
     print_conflicts(conflicts)
     draw_conflicts(g, conflicts)
-    return g
+    return g, inst_to_l
 
 
 def disas_file(beginning, end, virtual_offset, f):
@@ -1310,7 +1452,7 @@ def disas_file(beginning, end, virtual_offset, f):
     # return disas_segment(0x6e5b, 0x6e8a, f, fsize)
 
 
-def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr):
+def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr, inst_to_l):
     f = open(path, 'wb')
     # f = sys.stdout
     f.write("digraph G {\n")
@@ -1355,6 +1497,28 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr):
 
     for e in g.edges(data=True):
         u, v, d = e
+
+        min_a = min(u.addr, v.addr)
+        max_a = max(u.addr, v.addr)
+        changeLayer = False
+        if min_a not in inst_to_l or max_a not in inst_to_l:
+            print "toDot: addr in no layer"
+        else:
+            for l in inst_to_l[min_a]:
+                if l not in inst_to_l[max_a]:
+                    changeLayer = True
+                break
+
+        arrow_size = 1.0
+        if changeLayer:
+            dir_type = "both"
+            arrow_head = "empty"
+            arrow_tail = "odot"
+        else:
+            dir_type = "forward"
+            arrow_tail = "none"
+            arrow_head = "normal"
+
         if d['st_dyn'] == "static":
             style = "dashed"
             penwidth = 2
@@ -1367,19 +1531,33 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr):
 
         if d['color'] == "green":
             d['color'] = "black"
-            f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) +
-                    "\" [style=dotted,arrowhead=none,color=" + d['color'] + "]\n")
-        else:
-            f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) +
-                    "\" [style="+style+", penwidth="+ str(penwidth) + ", color=" + d['color'] + "]\n")
+            dir_type = "both"
+            arrow_tail = "dot"
+            arrow_head = "dot"
+            style = "dotted"
+            arrow_size = 0.5
+            penwidth = 1.0
+
+
+            # f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) +
+            #         "\" [style=dotted,arrowhead=none,color=" + d['color'] + "]\n")
+        # else:
+
+        f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) +
+                "\" [style="+style+", dir=" + dir_type + ", arrowhead=" + arrow_head
+                + ", arrowtail=" + arrow_tail + ", penwidth=" + str(penwidth)
+                + ", arrowsize=" + str(arrow_size)
+                + ", color=" + d['color'] + "]\n")
     f.write("}")
 
 # g = nx.MultiDiGraph()
 # g.add_node(2, "e")
 # g.add_node(3, "g")
 # g.add_node(4, "m")
-g = disas_file(beginning, end, virtual_offset, f)
-print_graph_to_file("file.dot", virtual_offset, g, trace_first_addr, trace_last_addr)
+
+g, inst_to_l = disas_file(beginning, end, virtual_offset, f)
+print_graph_to_file("file.dot", virtual_offset, g, trace_first_addr, trace_last_addr, inst_to_l)
+
 
 #
 # nx.draw_graphviz(g)
