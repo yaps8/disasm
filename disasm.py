@@ -848,7 +848,6 @@ def addr_in_graph(g, addr):
 
 def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram, layers, inst_to_l):
     #nm1_grams list with n-n_n_gram, n-n_n_gram+1, ... n-1 inst type
-    sweep_layer(addr, inst_to_l, layers)
     block = BasicBlock(addr)
     exists, existing_block = addr_in_graph(g, addr)
     inst = disas_at(addr, virtual_offset, beginning, end, f)
@@ -1382,26 +1381,51 @@ def color_nodes(g, p_seuil=0.0):
                 addr_info[n.addr]['color'] = "white"
 
     for n in nodes_to_remove:
-        print "removing", hi(n.addr)
+        # print "removing", hi(n.addr)
         g.remove_node(n)
 
 
 def sweep_layer(a, inst_to_l, layers):
     if a not in inst_to_l:
-        print "Layer @" + hi(a)
+        # print "Layer @" + hi(a)
         new_l = Layer(a)
         layers_to_remove = set()
         for l in layers:
             if l in new_l.insts:
-                print "layer @" + hi(l) + " being removed"
+                # print "layer @" + hi(l) + " being removed"
                 rm_layer_to_inst_to_layers(layers[l], inst_to_l)
                 layers_to_remove.add(l)
         for l in layers_to_remove:
             del layers[l]
         layers[a] = new_l
         add_layer_to_inst_to_layers(layers[a], inst_to_l)
-    else:
-        print "layer @" + hi(a) + " already sweeped"
+    # else:
+    #     print "layer @" + hi(a) + " already sweeped"
+
+
+def count_dis_jumps(g, inst_to_l):
+    n = 0
+    for e in g.edges():
+        u, v = e
+
+        min_a = min(u.addr, v.addr)
+        max_a = max(u.addr, v.addr)
+        if min_a not in inst_to_l or max_a not in inst_to_l:
+            print "toDot: addr in no layer"
+        else:
+            for l in inst_to_l[min_a]:
+                if l not in inst_to_l[max_a]:
+                    n += 1
+                break
+    return n
+
+
+def layers_stats(g, mode): #mode: static, dynamic, hybrid
+    layers = dict()
+    inst_to_l = dict()
+    for n in g.nodes():
+        if (mode == "static" and addr_info[trace_list[n.addr]]['color']
+        sweep_layer(n.addr, inst_to_l, layers)
 
 
 def disas_segment(beginning, end, virtual_offset, f):
@@ -1409,20 +1433,17 @@ def disas_segment(beginning, end, virtual_offset, f):
     # print "Sweeping layers..."
     # inst_to_l = sweep_layers()
 
-    print "Disassembling file and sweeping layers..."
+    print "Disassembling file..."
     inst_to_l = dict()
-    layers = dict()
+    # layers = dict()
     for a in range(beginning, end + 1):
         # print inst
         # if inst.has_target or inst.addr == beginning:
         # print hi(inst.addr), hi(virtual_offset)
         # if inst.addr == beginning: #or inst.addr == 0x4:
-        if a in trace_dict or a == entrypoint+2:
+        if a in trace_dict or a == entrypoint:
             make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize, [], layers, inst_to_l)
 
-    make_basic_block2(beginning, end, virtual_offset, entrypoint, g, f, fsize, [], layers, inst_to_l)
-    for l in layers:
-        print layers[l]
     # print "Splitting blocks..."
     # split_all_blocks(g)
     p_seuil = 1.734e-05
@@ -1432,11 +1453,22 @@ def disas_segment(beginning, end, virtual_offset, f):
     print "Coloring blocks and removing None..."
     color_nodes(g, p_seuil)
 
+    print "Sweeping layers..."
+    for n in g.nodes():
+        sweep_layer(n.addr, inst_to_l, layers)
+
+    # counting disalignment jumps:
+    n_dis_jumps = count_dis_jumps(g, inst_to_l)
+    print "There are", n_dis_jumps, "disalignment jumps (hybrid)."
+
+    for l in layers:
+        print layers[l].to_str(layers[l].debut, inst_to_l, False)
+
     # print "Computing conflicts..."
     # conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end)
     print "Grouping sequential instructions..."
     group_all_seq(g, dict())
-    print "There are", len(layers), "actives layers."
+    print "There are", len(layers), "active layers (static)."
     print "Computing conflicts..."
     conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end)
     # resolve_conflicts(g, conflicts, beginning)
