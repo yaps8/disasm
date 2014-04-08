@@ -42,6 +42,7 @@ Initial CFG from trace (from sub-approx):
     (Done) Disasm all from trace (sons of trace are legitimate), stop at last trace instruction
         With restrictions: Classify calls from trace
     (Done) Remove error paths (None)
+    (Done) Mark probabity of paths (n-grams)
     (TODO) Remove very improbabable paths
 Optimal CFG:
     In-between...
@@ -251,7 +252,7 @@ def ngrams_from_lines(lines):
     for l in lines:
         a = l.split()
         t = tuple(a[0:n_n_gram])
-        p = a[n_n_gram + 1]
+        p = float(a[n_n_gram + 1])
         n_grams[t] = p
     return n_n_gram, n_grams
 
@@ -1259,6 +1260,12 @@ def set_to_str(c):
     return s
 
 
+def set_to_hi_str(c):
+    s = ""
+    for n in c:
+        s += hi(n) + " "
+    return s
+
 def print_conflicts(conflicts):
     print "Conflicts:"
     s = ""
@@ -1346,7 +1353,7 @@ def add_trace_edges(g, trace_list):
             if trace_list[i] not in addr_info:
                 addr_info[trace_list[i]] = dict()
 
-            if not useTrace and bu.insts[0].prob is not None and  bu.insts[0].prob <= p_quantile:
+            if not useTrace and bu.insts[0].prob is not None and bu.insts[0].prob <= p_quantile:
                 addr_info[trace_list[i]]['color'] = "purple"
             else:
                 addr_info[trace_list[i]]['color'] = "pink"
@@ -1378,10 +1385,11 @@ def add_trace_edges(g, trace_list):
     addr_info[trace_list[-1]]['trace'] = True
 
 
-def color_nodes(g, p_seuil=0.0):
+def color_nodes(g, p_seuil):
     nodes_to_remove = set()
     for n in g.nodes():
-        if n.addr not in addr_info or 'color' not in addr_info[n.addr]:
+        if n.addr not in addr_info or 'color' not in addr_info[n.addr] \
+                or addr_info[n.addr]['color'] not in ("pink", "purple", "orange", "lightblue"):
             addr_info[n.addr] = dict()
             if n.addr == entrypoint:
                 addr_info[n.addr]['color'] = "orange"
@@ -1393,7 +1401,6 @@ def color_nodes(g, p_seuil=0.0):
                 addr_info[n.addr]['color'] = "white"
 
     for n in nodes_to_remove:
-        # print "removing", hi(n.addr)
         g.remove_node(n)
 
 
@@ -1462,12 +1469,11 @@ def disas_segment(beginning, end, virtual_offset, f):
 
     # print "Splitting blocks..."
     # split_all_blocks(g)
-    p_seuil = 1.734e-05
     if trace_list:
         print "Adding trace edges..."
         add_trace_edges(g, trace_list)
     print "Coloring blocks and removing None..."
-    color_nodes(g, p_seuil)
+    color_nodes(g, p_quantile)
 
     print "Sweeping layers..."
     layers_trace, n_dis_jumps_trace, inst_to_l_trace = layers_stats(g, "trace", False)
@@ -1489,14 +1495,15 @@ def disas_segment(beginning, end, virtual_offset, f):
     print "Computing conflicts..."
     conflicts_trace, addr_in_conflicts_trace = compute_conflicts(g, beginning, end, "trace")
     conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end, "hybrid")
-    print len(conflicts_trace), "conflicts,", len(addr_in_conflicts_trace), "addr in conflicts in trace."
-    print len(conflicts), "conflicts,", len(addr_in_conflicts), "addr in conflicts in hybrid disassembly."
+    print len(conflicts_trace), "conflicts,", len(addr_in_conflicts_trace), "bytes in conflicts in trace."
+    print len(conflicts), "conflicts,", len(addr_in_conflicts), "bytes in conflicts in hybrid disassembly."
 
     print "trace:", len(layers_trace), n_dis_jumps_trace, len(conflicts_trace), len(addr_in_conflicts_trace)
     print "hybrid:", len(layers_hybrid), n_dis_jumps_hybrid, len(conflicts), len(addr_in_conflicts)
+    # print set_to_hi_str(addr_in_conflicts)
     # resolve_conflicts(g, conflicts, beginning)
     # print len(conflicts), "conflicts remain."
-    print_conflicts(conflicts)
+    # print_conflicts(conflicts)
     draw_conflicts(g, conflicts)
     return g, inst_to_l
 

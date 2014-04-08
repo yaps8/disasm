@@ -4,7 +4,7 @@ r2 -b 32 upx-stub.bin
 nasm -f elf32 running-ex.asm; ld -m elf_i386 -s -o running-ex running-ex.o
 
 python2 disasm.py running-ex 0x8048060 0x80480a8 0 0x8048060 
-python2 disasm.py running-ex 0x8048060 0 0 / itrace.out
+python2 disasm.py running-ex 0x8048060 0 0 / running-ex_itrace.out
 
 python2 disasm.py telock99-hostname.bin.exe.snapshot2 0x01000000 0 0x01000000 0x01006e5b / / dump opcodes.prob
 python2 disasm.py telock99-hostname.bin.exe.snapshot2 0x01000000 0 0x01000000 / telock/trace3-addr-ordre02 traces/trace3 dump opcodes.prob displaytrace
@@ -16,3 +16,7 @@ python2 disasm.py upx-hostname.exe.bin.snapshot0 0x01000000 0 0x01000000 / upx/u
 
 r2 -b 32 -m 0x01000000 telock99-hostname.bin.exe.snapshot2 
 python2 disasm.py upx.bin / / / / / / bin
+
+Traces:
+cd /home/aurelien/pin-2.13-62732-gcc.4.4.7-linux/source/tools/ManualExamples
+../../../pin -t obj-ia32/itrace.so -- ~/disasm/running-ex
