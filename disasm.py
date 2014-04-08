@@ -631,12 +631,12 @@ class Layer:
                     str_insts += " "
 
                 else:
-                    str_insts += "(cf %d)" % (j)
+                    str_insts += "(cf %s)" % (hi(j))
                     break
             str_insts += "]"
         else:
             str_insts = ""
-        s = "Layer %d: (debut, fin)=(%s, %s), insts: %s" % (i, hi(self.debut), hi(self.fin), str_insts)
+        s = "Layer @%s: (debut, fin)=(%s, %s), insts: %s" % (hi(i), hi(self.debut), hi(self.fin), str_insts)
         return s
 
 
@@ -710,6 +710,8 @@ def is_node_simple_and_succ(g, n, addr_in_conflicts):
         u, v, d = e
         # if d['color'] != "red" or d['color'] != "black" or d['color'] != "pink":
         #     simple = False
+        if 'aligned' in d and not d['aligned']:
+            simple = False
     if n.addr in addr_in_conflicts:
         simple = False
     if len(outp) >= 1:
@@ -742,7 +744,11 @@ def group_seq(g, addr_in_conflicts):
                         all_succ_from_n = False
 
                 if s2 and all_succ_from_n and all_n_to_succ and n.addr + n.size == succ.addr \
-                        and addr_info[n.addr]['color'] == addr_info[succ.addr]['color']:
+                        and addr_info[n.addr]['color'] == addr_info[succ.addr]['color']\
+                        and (('trace' not in addr_info[n.addr] and 'trace' not in addr_info[succ.addr])
+                             or ('trace' in addr_info[n.addr] and 'trace' in addr_info[succ.addr]
+                                 and addr_info[n.addr]['trace'] == addr_info[succ.addr]['trace'])):
+
                     # regroup n and succ:
                     for i in succ.insts:
                         # inst = disas_at(i, virtual_offset, beginning, end, f)
@@ -846,7 +852,7 @@ def addr_in_graph(g, addr):
     return False, None
 
 
-def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram, layers, inst_to_l):
+def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram):
     #nm1_grams list with n-n_n_gram, n-n_n_gram+1, ... n-1 inst type
     block = BasicBlock(addr)
     exists, existing_block = addr_in_graph(g, addr)
@@ -909,7 +915,7 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram,
             target = b_inst.target
             if beginning <= target <= end:
                 b = make_basic_block2(beginning, end, virtual_offset, target, g, f,
-                                      fsize, m_gram, layers, inst_to_l)
+                                      fsize, m_gram)
                 if not exists:
                     connect_to(g, block, b, "red")
                 if not b.head_is_none:
@@ -919,7 +925,7 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram,
             has_succ = True
             if beginning <= b_inst.addr + b_inst.size <= end:
                 b = make_basic_block2(beginning, end, virtual_offset, b_inst.addr + b_inst.size, g, f,
-                                      fsize, m_gram, layers, inst_to_l)
+                                      fsize, m_gram)
                 if not exists:
                     connect_to(g, block, b)
                 if not b.head_is_none:
@@ -929,8 +935,8 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram,
                 and not ((b_inst.is_jcc or b_inst.is_call) and not b_inst.has_target):
             block.head_is_none = True
 
-        if not has_succ and b_inst.desc != "None":
-            print hex(b_inst.addr), b_inst.desc, "is final."
+        # if not has_succ and b_inst.desc != "None":
+        #     print hex(b_inst.addr), b_inst.desc, "is final."
     return block
 
 
@@ -942,11 +948,11 @@ def conflict_in_subset(conflict, conflicts):
     return False
 
 
-def compute_conflicts(g, beginning, end):
+def compute_conflicts(g, beginning, end, mode): #mode: trace or hybrid
     conflicts = set()
     addr_in_conflicts = set()
 
-    print "  Initial conflicts..."
+    # print "  Initial conflicts..."
     # for a in range(beginning, end):
     #     conflict = []
     #     for n in g.nodes():
@@ -957,11 +963,13 @@ def compute_conflicts(g, beginning, end):
 
     addr_to_conflict = dict()
     for n in g.nodes():
-        for i in range(n.addr, n.addr + n.size):
-            if not i in addr_to_conflict:
-                addr_to_conflict[i] = [n]
-            else:
-                addr_to_conflict[i].append(n)
+        if mode == "hybrid" or (mode == "trace" and n.addr in addr_info
+                                and 'trace' in addr_info[n.addr] and addr_info[n.addr]['trace']):
+            for i in range(n.addr, n.addr + n.size):
+                if not i in addr_to_conflict:
+                    addr_to_conflict[i] = [n]
+                else:
+                    addr_to_conflict[i].append(n)
 
     for i in range(beginning, end + 1):
         if i in addr_to_conflict:
@@ -969,7 +977,7 @@ def compute_conflicts(g, beginning, end):
                 addr_in_conflicts.add(i)
                 conflicts.add(frozenset(addr_to_conflict[i]))
 
-    print "  Removing Subsets..."
+    # print "  Removing Subsets..."
     conflicts_in_subset = set()
     for c in conflicts:
         if conflict_in_subset(c, conflicts):
@@ -1343,6 +1351,8 @@ def add_trace_edges(g, trace_list):
             else:
                 addr_info[trace_list[i]]['color'] = "pink"
 
+            addr_info[trace_list[i]]['trace'] = True
+
             if v in a_to_b:
                 bv = a_to_b[v]
             else:
@@ -1361,9 +1371,11 @@ def add_trace_edges(g, trace_list):
 
     # print hex(trace_list[0])
     addr_info[trace_list[0]]['color'] = "orange"
+    addr_info[trace_list[0]]['trace'] = True
     if trace_list[-1] not in addr_info:
         addr_info[trace_list[-1]] = dict()
     addr_info[trace_list[-1]]['color'] = "lightblue"
+    addr_info[trace_list[-1]]['trace'] = True
 
 
 def color_nodes(g, p_seuil=0.0):
@@ -1403,46 +1415,50 @@ def sweep_layer(a, inst_to_l, layers):
     #     print "layer @" + hi(a) + " already sweeped"
 
 
-def count_dis_jumps(g, inst_to_l):
+def count_dis_jumps(g, inst_to_l, mode, mark_edges):
     n = 0
-    for e in g.edges():
-        u, v = e
-
-        min_a = min(u.addr, v.addr)
-        max_a = max(u.addr, v.addr)
-        if min_a not in inst_to_l or max_a not in inst_to_l:
-            print "toDot: addr in no layer"
-        else:
-            for l in inst_to_l[min_a]:
-                if l not in inst_to_l[max_a]:
-                    n += 1
-                break
+    for e in g.edges(data=True):
+        u, v, d = e
+        if mode == "hybrid" or (mode == "trace" and (d['st_dyn'] == "dyn" or d['st_dyn'] == "both")):
+            min_a = min(u.addr, v.addr)
+            max_a = max(u.addr, v.addr)
+            if min_a not in inst_to_l or max_a not in inst_to_l:
+                print "toDot: addr in no layer"
+            else:
+                for l in inst_to_l[min_a]:
+                    if l not in inst_to_l[max_a]:
+                        if mark_edges:
+                            d['aligned'] = False
+                        n += 1
+                    else:
+                        if mark_edges:
+                            d['aligned'] = True
+                    break
     return n
 
 
-def layers_stats(g, mode): #mode: static, dynamic, hybrid
+def layers_stats(g, mode, mark_edges=False): #mode: hybrid, trace
     layers = dict()
     inst_to_l = dict()
     for n in g.nodes():
-        if (mode == "static" and addr_info[trace_list[n.addr]]['color']
-        sweep_layer(n.addr, inst_to_l, layers)
+        if mode == "hybrid" or (mode == "trace" and n.addr in addr_info
+                                and 'trace' in addr_info[n.addr] and addr_info[n.addr]['trace']):
+            sweep_layer(n.addr, inst_to_l, layers)
+    n_dis_jumps = count_dis_jumps(g, inst_to_l, mode, mark_edges)
+    return layers, n_dis_jumps, inst_to_l
 
 
 def disas_segment(beginning, end, virtual_offset, f):
     g = nx.MultiDiGraph()
-    # print "Sweeping layers..."
-    # inst_to_l = sweep_layers()
 
     print "Disassembling file..."
-    inst_to_l = dict()
-    # layers = dict()
     for a in range(beginning, end + 1):
         # print inst
         # if inst.has_target or inst.addr == beginning:
         # print hi(inst.addr), hi(virtual_offset)
         # if inst.addr == beginning: #or inst.addr == 0x4:
         if a in trace_dict or a == entrypoint:
-            make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize, [], layers, inst_to_l)
+            make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize, [])
 
     # print "Splitting blocks..."
     # split_all_blocks(g)
@@ -1454,25 +1470,32 @@ def disas_segment(beginning, end, virtual_offset, f):
     color_nodes(g, p_seuil)
 
     print "Sweeping layers..."
-    for n in g.nodes():
-        sweep_layer(n.addr, inst_to_l, layers)
+    layers_trace, n_dis_jumps_trace, inst_to_l_trace = layers_stats(g, "trace", False)
+    layers_hybrid, n_dis_jumps_hybrid, inst_to_l = layers_stats(g, "hybrid", True)
+    print len(layers_trace), "active layers and", n_dis_jumps_trace, "disalignment jumps from trace."
+    print len(layers_hybrid), "active layers and", n_dis_jumps_hybrid, "disalignment jumps from hybrid disassembly."
 
-    # counting disalignment jumps:
-    n_dis_jumps = count_dis_jumps(g, inst_to_l)
-    print "There are", n_dis_jumps, "disalignment jumps (hybrid)."
-
-    for l in layers:
-        print layers[l].to_str(layers[l].debut, inst_to_l, False)
+    # for l in layers_trace:
+    #     print layers_trace[l].to_str(layers_trace[l].debut, inst_to_l, False)
+    #
+    # for l in layers_hybrid:
+    #     print layers_hybrid[l].to_str(layers_hybrid[l].debut, inst_to_l, False)
 
     # print "Computing conflicts..."
     # conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end)
     print "Grouping sequential instructions..."
     group_all_seq(g, dict())
-    print "There are", len(layers), "active layers (static)."
+
     print "Computing conflicts..."
-    conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end)
+    conflicts_trace, addr_in_conflicts_trace = compute_conflicts(g, beginning, end, "trace")
+    conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end, "hybrid")
+    print len(conflicts_trace), "conflicts,", len(addr_in_conflicts_trace), "addr in conflicts in trace."
+    print len(conflicts), "conflicts,", len(addr_in_conflicts), "addr in conflicts in hybrid disassembly."
+
+    print "trace:", len(layers_trace), n_dis_jumps_trace, len(conflicts_trace), len(addr_in_conflicts_trace)
+    print "hybrid:", len(layers_hybrid), n_dis_jumps_hybrid, len(conflicts), len(addr_in_conflicts)
     # resolve_conflicts(g, conflicts, beginning)
-    print len(conflicts), "conflicts remain."
+    # print len(conflicts), "conflicts remain."
     print_conflicts(conflicts)
     draw_conflicts(g, conflicts)
     return g, inst_to_l
@@ -1530,19 +1553,23 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr, inst_to_l):
     for e in g.edges(data=True):
         u, v, d = e
 
-        min_a = min(u.addr, v.addr)
-        max_a = max(u.addr, v.addr)
-        changeLayer = False
-        if min_a not in inst_to_l or max_a not in inst_to_l:
-            print "toDot: addr in no layer"
+        # min_a = min(u.addr, v.addr)
+        # max_a = max(u.addr, v.addr)
+        # change_layer = False
+        # if min_a not in inst_to_l or max_a not in inst_to_l:
+        #     print "toDot: addr in no layer"
+        # else:
+        #     for l in inst_to_l[min_a]:
+        #         if l not in inst_to_l[max_a]:
+        #             change_layer = True
+        #         break
+        if 'aligned' in d:
+            change_layer = not d['aligned']
         else:
-            for l in inst_to_l[min_a]:
-                if l not in inst_to_l[max_a]:
-                    changeLayer = True
-                break
+            change_layer = False
 
         arrow_size = 1.0
-        if changeLayer:
+        if change_layer:
             dir_type = "both"
             arrow_head = "empty"
             arrow_tail = "odot"
