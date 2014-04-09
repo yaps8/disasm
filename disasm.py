@@ -1502,7 +1502,7 @@ def disas_segment(beginning, end, virtual_offset, f):
     print "hybrid:", len(layers_hybrid), n_dis_jumps_hybrid, len(conflicts), len(addr_in_conflicts)
     # print set_to_hi_str(addr_in_conflicts)
     # resolve_conflicts(g, conflicts, beginning)
-    # print len(conflicts), "conflicts remain."
+    print len(conflicts), "conflicts remain."
     # print_conflicts(conflicts)
     draw_conflicts(g, conflicts)
     return g, inst_to_l
