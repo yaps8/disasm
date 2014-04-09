@@ -559,7 +559,8 @@ def disas_at_r2(addr, beginning, end):
 
         i = Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq, is_none, is_int)
     else:
-        print "Error in disas_at_r2 - not in range: ", addr
+        print "Error in disas_at_r2 - not in range: ", hi(addr)
+        raise "Error in r2: not in range"
         i = None
 
     addr_info[addr]['inst'] = i
@@ -584,6 +585,23 @@ class Layer:
         self.debut = debut
         self.fin = fin
 
+    # def __init__(self, addr, inst_to_l):
+    #     self.insts = set()
+    #     self.debut = addr
+    #     a = addr
+    #     lasta = a
+    #     i = disas_at(a, virtual_offset, beginning, end, f)
+    #     while beginning <= a and a + i.size <= end + 1:
+    #         self.insts.add(a)
+    #         lasta = a
+    #         a += i.size
+    #         if beginning <= a <= end:
+    #             if a in inst_to_l:
+    #                 i = inst_to_l[a].pop()
+    #         else:
+    #             break
+    #     self.fin = lasta
+
     def __init__(self, addr):
         self.insts = set()
         self.debut = addr
@@ -593,6 +611,8 @@ class Layer:
         while beginning <= a and a + i.size <= end + 1:
             self.insts.add(a)
             lasta = a
+            if i.size == 0:
+                raise "Size is 0."
             a += i.size
             if beginning <= a <= end: #and not (a in inst_to_l and len(inst_to_l[a]) != 0):
                 i = disas_at(a, virtual_offset, beginning, end, f)
@@ -642,6 +662,7 @@ class Layer:
 
 
 def add_layer_to_inst_to_layers(layer, i_to_l):
+    # layer = Layer(layer_addr)
     for i in range(beginning, end + 1):
         if i in layer.insts:
             if i not in i_to_l:
@@ -649,7 +670,8 @@ def add_layer_to_inst_to_layers(layer, i_to_l):
             i_to_l[i].add(layer.debut)
 
 
-def rm_layer_to_inst_to_layers(layer, i_to_l):
+def rm_layer_to_inst_to_layers(layer_addr, i_to_l):
+    layer = Layer(layer_addr)
     for i in range(beginning, end + 1):
         if i in layer.insts and i in i_to_l:
                 i_to_l[i].remove(layer.debut)
@@ -1335,7 +1357,7 @@ def add_trace_edges(g, trace_list):
     a_to_b = dict()
 
     for i in range(len(trace_list)-1):
-        if beginning <= trace_list[i] <= end:
+        if beginning <= trace_list[i] <= end and beginning <= trace_list[i+1] <= end:
             u = trace_list[i]
             v = trace_list[i+1]
 
@@ -1404,22 +1426,23 @@ def color_nodes(g, p_seuil):
         g.remove_node(n)
 
 
-def sweep_layer(a, inst_to_l, layers):
+def sweep_layer(a, inst_to_l, layers_addr):
     if a not in inst_to_l:
         # print "Layer @" + hi(a)
         new_l = Layer(a)
-        layers_to_remove = set()
-        for l in layers:
-            if l in new_l.insts:
-                # print "layer @" + hi(l) + " being removed"
-                rm_layer_to_inst_to_layers(layers[l], inst_to_l)
-                layers_to_remove.add(l)
-        for l in layers_to_remove:
-            del layers[l]
-        layers[a] = new_l
-        add_layer_to_inst_to_layers(layers[a], inst_to_l)
+        # layers_to_remove = set()
+        # for l in layers_addr:
+        #     if l in new_l.insts:
+        #         print "layer @" + hi(l) + " being removed"
+                # rm_layer_to_inst_to_layers(l, inst_to_l)
+                # layers_to_remove.add(l)
+        # for l in layers_to_remove:
+        #     layers_addr.remove(l)
+        layers_addr.add(new_l.debut)
+        add_layer_to_inst_to_layers(new_l, inst_to_l)
+        # del new_l
     # else:
-    #     print "layer @" + hi(a) + " already sweeped"
+        # print "layer @" + hi(a) + " already sweeped"
 
 
 def count_dis_jumps(g, inst_to_l, mode, mark_edges):
@@ -1445,14 +1468,22 @@ def count_dis_jumps(g, inst_to_l, mode, mark_edges):
 
 
 def layers_stats(g, mode, mark_edges=False): #mode: hybrid, trace
-    layers = dict()
+    layers_addr = set()
     inst_to_l = dict()
+    list_addr_to_sweep = []
     for n in g.nodes():
         if mode == "hybrid" or (mode == "trace" and n.addr in addr_info
                                 and 'trace' in addr_info[n.addr] and addr_info[n.addr]['trace']):
-            sweep_layer(n.addr, inst_to_l, layers)
+            list_addr_to_sweep.append(n.addr)
+
+    list_addr_to_sweep.sort()
+    for a in list_addr_to_sweep:
+        if len(layers_addr) < 200:
+            sweep_layer(a, inst_to_l, layers_addr)
+        else:
+            raise "Too many layers..."
     n_dis_jumps = count_dis_jumps(g, inst_to_l, mode, mark_edges)
-    return layers, n_dis_jumps, inst_to_l
+    return layers_addr, n_dis_jumps, inst_to_l
 
 
 def disas_segment(beginning, end, virtual_offset, f):
