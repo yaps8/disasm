@@ -563,7 +563,7 @@ def disas_at(addr, virtual_offset, beginning, end, f):
 
 class Layer:
     def __init__(self):
-        self.insts = set()
+        self.insts = []
         self.debut = 0
         self.fin = 0
 
@@ -572,47 +572,53 @@ class Layer:
         self.debut = debut
         self.fin = fin
 
-    # def __init__(self, addr, inst_to_l):
-    #     self.insts = set()
-    #     self.debut = addr
-    #     a = addr
-    #     lasta = a
-    #     i = disas_at(a, virtual_offset, beginning, end, f)
-    #     while beginning <= a and a + i.size <= end + 1:
-    #         self.insts.add(a)
-    #         lasta = a
-    #         a += i.size
-    #         if beginning <= a <= end:
-    #             if a in inst_to_l:
-    #                 i = inst_to_l[a].pop()
-    #         else:
-    #             break
-    #     self.fin = lasta
-
-    def __init__(self, addr):
-        self.insts = set()
+    def __init__(self, addr, inst_to_l):
+        self.insts = []
         self.debut = addr
         a = addr
         lasta = a
         i = disas_at(a, virtual_offset, beginning, end, f)
         while beginning <= a and a + i.size <= end + 1:
-            self.insts.add(a)
+            if a in inst_to_l:
+                # print "already!!"
+                self.insts.append(str("@")+str(inst_to_l[a]))
+                break
+            else:
+                self.insts.append(a)
             lasta = a
             if i.size == 0:
                 raise "Size is 0."
             a += i.size
-            if beginning <= a <= end: #and not (a in inst_to_l and len(inst_to_l[a]) != 0):
+            if beginning <= a <= end:
                 i = disas_at(a, virtual_offset, beginning, end, f)
             else:
                 break
         self.fin = lasta
 
+    # def __init__(self, addr):
+    #     self.insts = []
+    #     self.debut = addr
+    #     a = addr
+    #     lasta = a
+    #     i = disas_at(a, virtual_offset, beginning, end, f)
+    #     while beginning <= a and a + i.size <= end + 1:
+    #         self.insts.append(a)
+    #         lasta = a
+    #         if i.size == 0:
+    #             raise "Size is 0."
+    #         a += i.size
+    #         if beginning <= a <= end: #and not (a in inst_to_l and len(inst_to_l[a]) != 0):
+    #             i = disas_at(a, virtual_offset, beginning, end, f)
+    #         else:
+    #             break
+    #     self.fin = lasta
+
     def __str__(self):
-        sorted_i = list(self.insts)
-        sorted_i.sort()
-        if sorted_i:
+        # sorted_i = list(self.insts)
+        # sorted_i.sort()
+        if self.insts:
             str_insts = "["
-            for i in sorted_i:
+            for i in self.insts:
                 str_insts += hi(i) + " "
             str_insts += "]"
         else:
@@ -648,13 +654,13 @@ class Layer:
         return s
 
 
-def add_layer_to_inst_to_layers(layer, i_to_l):
+def add_layer_to_inst_to_layer(layer, i_to_l):
     # layer = Layer(layer_addr)
-    for i in range(beginning, end + 1):
-        if i in layer.insts:
-            if i not in i_to_l:
-                i_to_l[i] = set()
-            i_to_l[i].add(layer.debut)
+    for i in layer.insts:
+        if type(i) is not str:
+            if i in i_to_l:
+                print "hum ??"
+            i_to_l[i] = layer.debut
 
 
 def rm_layer_to_inst_to_layers(layer_addr, i_to_l):
@@ -664,16 +670,16 @@ def rm_layer_to_inst_to_layers(layer_addr, i_to_l):
                 i_to_l[i].remove(layer.debut)
 
 
-def inst_to_layers(layers):
-    i_to_l = dict()
-    for i in range(beginning, end + 1):
-        s = set()
-        for j in range(len(layers)):
-            if i in layers[j].insts:
-                s.add(j)
-        if s:
-            i_to_l[i] = s
-    return i_to_l
+# def inst_to_layers(layers):
+#     i_to_l = dict()
+#     for i in range(beginning, end + 1):
+#         s = set()
+#         for j in range(len(layers)):
+#             if i in layers[j].insts:
+#                 s.add(j)
+#         if s:
+#             i_to_l[i] = s
+#     return i_to_l
 
 
 def get_first_block_having(g, inst):
@@ -1414,10 +1420,10 @@ def color_nodes(g, p_seuil):
         g.remove_node(n)
 
 
-def sweep_layer(a, inst_to_l, layers_addr):
+def sweep_layer(a, inst_to_l, layers):
     if a not in inst_to_l:
         # print "Layer @" + hi(a)
-        new_l = Layer(a)
+        new_l = Layer(a, inst_to_l)
         # layers_to_remove = set()
         # for l in layers_addr:
         #     if l in new_l.insts:
@@ -1426,37 +1432,53 @@ def sweep_layer(a, inst_to_l, layers_addr):
                 # layers_to_remove.add(l)
         # for l in layers_to_remove:
         #     layers_addr.remove(l)
-        layers_addr.add(new_l.debut)
-        add_layer_to_inst_to_layers(new_l, inst_to_l)
+        layers[new_l.debut] = new_l
+        add_layer_to_inst_to_layer(new_l, inst_to_l)
         # del new_l
     # else:
         # print "layer @" + hi(a) + " already sweeped"
 
 
-def count_dis_jumps(g, inst_to_l, mode, mark_edges):
+# returns True if the layer l realigns with layer where l2_debut is
+def layer_realigns(layers, l, l2_debut):
+    tmp_l = l
+    while True:
+        if tmp_l.debut == l2_debut:
+            return True
+        if type(tmp_l.insts[-1]) is str:
+            tmp_debut = int(tmp_l.insts[-1][1:])
+            tmp_l = layers[tmp_debut]
+        else:
+            break
+    return False
+
+
+def count_dis_jumps(g, inst_to_l, mode, mark_edges, layers):
     n = 0
+
     for e in g.edges(data=True):
         u, v, d = e
         if mode == "hybrid" or (mode == "trace" and (d['st_dyn'] == "dyn" or d['st_dyn'] == "both")):
             min_a = min(u.addr, v.addr)
             max_a = max(u.addr, v.addr)
             if min_a not in inst_to_l or max_a not in inst_to_l:
-                print "toDot: addr in no layer"
+                print "disJumps: addr in no layer"
             else:
-                for l in inst_to_l[min_a]:
-                    if l not in inst_to_l[max_a]:
-                        if mark_edges:
-                            d['aligned'] = False
-                        n += 1
-                    else:
-                        if mark_edges:
-                            d['aligned'] = True
-                    break
+                l = inst_to_l[min_a]
+                l2 = inst_to_l[max_a]
+                if layer_realigns(layers, layers[l], l2):
+                    # print hi(l), hi(inst_to_l[max_a][0])
+                    if mark_edges:
+                        d['aligned'] = True
+                else:
+                    if mark_edges:
+                        d['aligned'] = False
+                    n += 1
     return n
 
 
 def layers_stats(g, mode, mark_edges=False): #mode: hybrid, trace
-    layers_addr = set()
+    layers = dict()
     inst_to_l = dict()
     list_addr_to_sweep = []
     for n in g.nodes():
@@ -1466,12 +1488,12 @@ def layers_stats(g, mode, mark_edges=False): #mode: hybrid, trace
 
     list_addr_to_sweep.sort()
     for a in list_addr_to_sweep:
-        if len(layers_addr) < 200:
-            sweep_layer(a, inst_to_l, layers_addr)
-        else:
-            raise "Too many layers..."
-    n_dis_jumps = count_dis_jumps(g, inst_to_l, mode, mark_edges)
-    return layers_addr, n_dis_jumps, inst_to_l
+        # if len(layers) < 200:
+        sweep_layer(a, inst_to_l, layers)
+        # else:
+        #     raise "Too many layers..."
+    n_dis_jumps = count_dis_jumps(g, inst_to_l, mode, mark_edges, layers)
+    return layers, n_dis_jumps
 
 
 def disas_segment(beginning, end, virtual_offset, f):
@@ -1495,10 +1517,14 @@ def disas_segment(beginning, end, virtual_offset, f):
     color_nodes(g, p_quantile)
 
     print "Sweeping layers..."
-    layers_trace, n_dis_jumps_trace, inst_to_l_trace = layers_stats(g, "trace", False)
-    layers_hybrid, n_dis_jumps_hybrid, inst_to_l = layers_stats(g, "hybrid", True)
+    layers_trace, n_dis_jumps_trace = layers_stats(g, "trace", False)
+    layers_hybrid, n_dis_jumps_hybrid = layers_stats(g, "hybrid", True)
     print len(layers_trace), "active layers and", n_dis_jumps_trace, "disalignment jumps from trace."
     print len(layers_hybrid), "active layers and", n_dis_jumps_hybrid, "disalignment jumps from hybrid disassembly."
+
+    # for e in g.edges(data=True):
+    #     u, v, d = e
+    #     print hi(u.addr), "->", hi(v.addr), d['st_dyn']
 
     # for l in layers_trace:
     #     print layers_trace[l].to_str(layers_trace[l].debut, inst_to_l, False)
@@ -1524,7 +1550,7 @@ def disas_segment(beginning, end, virtual_offset, f):
     print len(conflicts), "conflicts remain."
     # print_conflicts(conflicts)
     draw_conflicts(g, conflicts)
-    return g, inst_to_l
+    return g
 
 
 def disas_file(beginning, end, virtual_offset, f):
@@ -1533,7 +1559,7 @@ def disas_file(beginning, end, virtual_offset, f):
     # return disas_segment(0x6e5b, 0x6e8a, f, fsize)
 
 
-def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr, inst_to_l):
+def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr):
     f = open(path, 'wb')
     # f = sys.stdout
     f.write("digraph G {\n")
@@ -1640,5 +1666,5 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr, inst_to_l):
 # g.add_node(3, "g")
 # g.add_node(4, "m")
 
-g, inst_to_l = disas_file(beginning, end, virtual_offset, f)
-print_graph_to_file("file.dot", virtual_offset, g, trace_first_addr, trace_last_addr, inst_to_l)
+g = disas_file(beginning, end, virtual_offset, f)
+print_graph_to_file("file.dot", virtual_offset, g, trace_first_addr, trace_last_addr)
