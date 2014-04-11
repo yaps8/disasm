@@ -3,7 +3,7 @@
 
 import sys
 import os
-import distorm3
+# import distorm3
 import networkx as nx
 # import colorsys
 from networkx import dag
@@ -91,31 +91,31 @@ class Instruction:
         self.is_int = is_int
         self.prob = None
 
-    @staticmethod
-    def target(str):
-        t = str.split()
-        if t[0] in ["jz", "jnz", "jmp"]:
-            target = int(t[1],16)
-            if t[0] == "jmp":
-                return True, target, False, False
-            else:
-                return True, target, True, False
-        elif t[0] in ["call"]:
-            return False, 0, False, True
-        else:
-            return False, 0, False, False
+    # @staticmethod
+    # def target(str):
+    #     t = str.split()
+    #     if t[0] in ["jz", "jnz", "jmp"]:
+    #         target = int(t[1],16)
+    #         if t[0] == "jmp":
+    #             return True, target, False, False
+    #         else:
+    #             return True, target, True, False
+    #     elif t[0] in ["call"]:
+    #         return False, 0, False, True
+    #     else:
+    #         return False, 0, False, False
 
-    @staticmethod
-    def inst_from_distorm(d_inst):
-        addr = d_inst[0]
-        size = d_inst[1]
-        desc = d_inst[2].lower()
-        i, t, jcc, call = Instruction.target(d_inst[2].lower())
-        is_call = call
-        has_target = i
-        target = t
-        is_jcc = jcc
-        return Instruction(addr, size, desc, is_call, has_target, target, is_jcc, True, False, False)
+    # @staticmethod
+    # def inst_from_distorm(d_inst):
+    #     addr = d_inst[0]
+    #     size = d_inst[1]
+    #     desc = d_inst[2].lower()
+    #     i, t, jcc, call = Instruction.target(d_inst[2].lower())
+    #     is_call = call
+    #     has_target = i
+    #     target = t
+    #     is_jcc = jcc
+    #     return Instruction(addr, size, desc, is_call, has_target, target, is_jcc, True, False, False)
 
     def __str__(self):
         s = str(hex(int(self.addr))) + ": " + str(hex(int(self.size))) + ", " + self.desc
@@ -341,11 +341,6 @@ else:
 n_n_gram = 3
 n_grams = dict()
 addr_to_m_gram = dict()
-# n_grams[("mov", "mov", "sub")] = 0.4
-# n_grams[("pop", "mov", "inc")] = 0.4
-# n_grams[("or", "jne", "rol")] = 0.2
-# n_grams[("jne", "int", "rol")] = 0.1
-# n_grams[("int", "rol", "add")] = 0.2
 
 
 def trace_ngrams(opcodes, n_n_gram):
@@ -399,17 +394,6 @@ if end == 0:
 # print rc.cmd_str("s 0")
 # print rc.cmd_str("pd 5")
 
-
-# call_blacklist = set()
-# call_blacklist.add("call dword [edi-0x7d]")
-# call_blacklist.add("call 0xc10d7257")
-# call_blacklist.add("call dword [eax-0x3d7cfd75]")
-# call_blacklist.add("call far dword [esi-0x77]")
-# call_blacklist.add("call dword [esi+0x5494]")
-# call_blacklist.add("call dword [esi+0x5498]")
-# call_blacklist.add("call dword [esi+0x54a8]")
-# call_blacklist.add("call ebp")
-
 reg_set = set()
 reg_set.add("eax")
 reg_set.add("ebx")
@@ -438,14 +422,14 @@ reg_set.add("eip")
 # reg_set.add("dl")
 
 
-def disas_at_distorm(addr, virtual_offset, beginning, end, f):
-    if beginning <= addr <= end:
-        f.seek(addr)
-        l = distorm3.Decode(addr, f.read(min(16, end-addr)), distorm3.Decode32Bits)[0]
-        l[0] += virtual_offset
-        return Instruction.inst_from_distorm(l)
-    else:
-        print "Error in disas_at"
+# def disas_at_distorm(addr, virtual_offset, beginning, end, f):
+#     if beginning <= addr <= end:
+#         f.seek(addr)
+#         l = distorm3.Decode(addr, f.read(min(16, end-addr)), distorm3.Decode32Bits)[0]
+#         l[0] += virtual_offset
+#         return Instruction.inst_from_distorm(l)
+#     else:
+#         print "Error in disas_at"
 
 
 class OpType:
@@ -571,10 +555,10 @@ def disas_at_r2(addr, beginning, end):
 
 
 def disas_at(addr, virtual_offset, beginning, end, f):
-    if useRadare:
-        return disas_at_r2(addr, beginning, end)
-    else:
-        return disas_at_distorm(addr, virtual_offset, beginning, end, f)
+    # if useRadare:
+    return disas_at_r2(addr, beginning, end)
+    # else:
+    #     return disas_at_distorm(addr, virtual_offset, beginning, end, f)
 
 
 class Layer:
@@ -1658,18 +1642,3 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr, inst_to_l):
 
 g, inst_to_l = disas_file(beginning, end, virtual_offset, f)
 print_graph_to_file("file.dot", virtual_offset, g, trace_first_addr, trace_last_addr, inst_to_l)
-
-
-#
-# nx.draw_graphviz(g)
-# nx.write_dot(g, 'file.dot')
-
-# print disas_at_r2(0x6e6d, f, fsize)
-#
-# for a in range(fsize):
-#     i1 = disas_at_distorm(a, virtual_offset, beginning, end, f)
-#     i2 = disas_at_r2(a, virtual_offset, beginning, end, f)
-#     print str(hex(int(a)))
-#     print "Distorm:", i1
-#     print "Radare2:", i2
-#     print ""
