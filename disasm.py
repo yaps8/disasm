@@ -256,12 +256,15 @@ def ngrams_from_lines(lines):
         n_grams[t] = p
     return n_n_gram, n_grams
 
-
-if len(sys.argv) > 1:
-    path = sys.argv[1]
+if len(sys.argv) <= 1 or sys.argv[1] == "-h" or sys.argv[1] == "--help":
+    usage = "python disasm.py (first_addr) (last_addr) (offset) (entrypoint) (trace_list) (trace_detailled) " \
+            "(bin/dump) (n-gram.prob) (usatrace/displaytrace)"
+    print "Usage:", usage
+    print "See examples in examples file."
+    exit()
 else:
-    # path = "/home/aurelien/trace/telock99-hostname.bin/telock99-hostname.bin.exe.snapshot2"
-    path = "ex.bin"
+    path = sys.argv[1]
+
 f = open(path, "rb")
 fsize = os.path.getsize(path)
 
@@ -1417,9 +1420,10 @@ def color_nodes(g, p_seuil):
                 addr_info[n.addr]['color'] = "orange"
             elif n.head_is_none:
                 nodes_to_remove.add(n)
-            elif n.insts[0].prob is not None and n.insts[0].prob < p_seuil:
+            elif n.insts[0].prob is not None and n.insts[0].prob <= p_seuil:
                 addr_info[n.addr]['color'] = "lightgray"
             else:
+                # print hi(n.addr), type(n.insts[0].prob), n.insts[0].prob, p_seuil, type(p_seuil), "white"
                 addr_info[n.addr]['color'] = "white"
 
     for n in nodes_to_remove:
