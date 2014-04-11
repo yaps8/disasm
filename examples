@@ -1,3 +1,6 @@
+En output:
+Quelques informations et le fichier .dot résultant (a ouvrir avec xdot par exemple)
+
 Manual example:
 Disasm without trace:
 python2 disasm.py manual_ex/running-ex 0x8048060 0x80480a8 0 0x8048060 
