@@ -13,9 +13,16 @@ from r2 import r_core
 # import matplotlib.pyplot as plt
 # import pydot
 import numpy
+import threading
+
 
 useRadare = True
 sys.setrecursionlimit(1500000)
+# sys.setrecursionlimit(150)
+# threading.stack_size(32768)
+threading.stack_size(67108864)
+
+print threading.stack_size()
 
 '''
 Colors:
@@ -576,8 +583,8 @@ class Layer:
         self.insts = []
         self.debut = addr
         a = addr
-        lasta = a
         i = disas_at(a, virtual_offset, beginning, end, f)
+        lasta_p_size = a + i.size - 1
         while beginning <= a and a + i.size <= end + 1:
             if a in inst_to_l:
                 # print "already!!"
@@ -585,15 +592,15 @@ class Layer:
                 break
             else:
                 self.insts.append(a)
-            lasta = a
             if i.size == 0:
                 raise "Size is 0."
             a += i.size
+            lasta_p_size = a - 1
             if beginning <= a <= end:
                 i = disas_at(a, virtual_offset, beginning, end, f)
             else:
                 break
-        self.fin = lasta
+        self.fin = lasta_p_size
 
     # def __init__(self, addr):
     #     self.insts = []
@@ -627,26 +634,17 @@ class Layer:
         return s
 
     def to_str(self, i, i_to_l, detailled=False):
-        sorted_i = list(self.insts)
-        sorted_i.sort()
-        if sorted_i:
+        if self.insts:
             str_insts = "["
-            for k in sorted_i:
-                already_seen = False
-                for j in i_to_l[k]:
-                    if j < i:
-                        already_seen = True
-                        break
-                if not already_seen:
+            for k in self.insts:
+                if type(k) is str:
+                    str_insts += "@" + hi(int(k[1:]))
+                else:
                     if detailled:
                         str_insts += str(disas_at(k, virtual_offset, beginning, end, f))
                     else:
                         str_insts += hi(k)
-                    str_insts += " "
-
-                else:
-                    str_insts += "(cf %s)" % (hi(j))
-                    break
+                str_insts += " "
             str_insts += "]"
         else:
             str_insts = ""
@@ -870,6 +868,7 @@ def addr_in_graph(g, addr):
 
 def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram):
     #nm1_grams list with n-n_n_gram, n-n_n_gram+1, ... n-1 inst type
+
     block = BasicBlock(addr)
     exists, existing_block = addr_in_graph(g, addr)
     inst = disas_at(addr, virtual_offset, beginning, end, f)
@@ -918,7 +917,6 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram)
     else:
         if exists:
             return block
-
     if b_inst.is_none:
         block.head_is_none = True
 
@@ -926,6 +924,7 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram)
     if not useTrace or b_inst.addr != trace_last_addr:
         has_succ = False
         all_succ_goto_none = True
+
         if b_inst.has_target:
             has_succ = True
             target = b_inst.target
@@ -950,7 +949,6 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram)
         if has_succ and all_succ_goto_none and not b_inst.is_int \
                 and not ((b_inst.is_jcc or b_inst.is_call) and not b_inst.has_target):
             block.head_is_none = True
-
         # if not has_succ and b_inst.desc != "None":
         #     print hex(b_inst.addr), b_inst.desc, "is final."
     return block
@@ -1432,6 +1430,7 @@ def sweep_layer(a, inst_to_l, layers):
                 # layers_to_remove.add(l)
         # for l in layers_to_remove:
         #     layers_addr.remove(l)
+        # print new_l.to_str(new_l.debut, inst_to_l, False)
         layers[new_l.debut] = new_l
         add_layer_to_inst_to_layer(new_l, inst_to_l)
         # del new_l
@@ -1440,14 +1439,17 @@ def sweep_layer(a, inst_to_l, layers):
 
 
 # returns True if the layer l realigns with layer where l2_debut is
-def layer_realigns(layers, l, l2_debut):
+def layer_realigns(layers, l, l2_debut, max_addr):
     tmp_l = l
     while True:
         if tmp_l.debut == l2_debut:
             return True
         if type(tmp_l.insts[-1]) is str:
-            tmp_debut = int(tmp_l.insts[-1][1:])
-            tmp_l = layers[tmp_debut]
+            if tmp_l.fin < max_addr:
+                tmp_debut = int(tmp_l.insts[-1][1:])
+                tmp_l = layers[tmp_debut]
+            else:
+                return False
         else:
             break
     return False
@@ -1466,8 +1468,7 @@ def count_dis_jumps(g, inst_to_l, mode, mark_edges, layers):
             else:
                 l = inst_to_l[min_a]
                 l2 = inst_to_l[max_a]
-                if layer_realigns(layers, layers[l], l2):
-                    # print hi(l), hi(inst_to_l[max_a][0])
+                if layer_realigns(layers, layers[l], l2, max_a):
                     if mark_edges:
                         d['aligned'] = True
                 else:
@@ -1492,6 +1493,7 @@ def layers_stats(g, mode, mark_edges=False): #mode: hybrid, trace
         sweep_layer(a, inst_to_l, layers)
         # else:
         #     raise "Too many layers..."
+
     n_dis_jumps = count_dis_jumps(g, inst_to_l, mode, mark_edges, layers)
     return layers, n_dis_jumps
 
@@ -1547,6 +1549,7 @@ def disas_segment(beginning, end, virtual_offset, f):
     print "hybrid:", len(layers_hybrid), n_dis_jumps_hybrid, len(conflicts), len(addr_in_conflicts)
     # print set_to_hi_str(addr_in_conflicts)
     # resolve_conflicts(g, conflicts, beginning)
+    # print "addr in conflicts"
     print len(conflicts), "conflicts remain."
     # print_conflicts(conflicts)
     draw_conflicts(g, conflicts)
