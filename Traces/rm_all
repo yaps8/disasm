@@ -4,3 +4,5 @@ list=`ls | grep tar | sed 's/\.tar.*//'`
 for i in `echo $list`; do
 	rm -rf $i/
 done
+rm -f opcodes
+rm -f opcodes.prob
