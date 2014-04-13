@@ -287,7 +287,7 @@ else:
 if len(sys.argv) > 3 and sys.argv[3] != "/":
     end = int(sys.argv[3], 16)
 else:
-    end = fsize - 1
+    end = beginning + fsize - 1
 
 if len(sys.argv) > 4 and sys.argv[4] != "/":
     virtual_offset = int(sys.argv[4], 16)
@@ -295,8 +295,10 @@ else:
     virtual_offset = 0
 
 if len(sys.argv) > 5 and sys.argv[5] != "/":
+    ep_known = True
     entrypoint = int(sys.argv[5], 16)
 else:
+    ep_known = False
     entrypoint = beginning
 
 
@@ -309,6 +311,7 @@ if len(sys.argv) > 7 and sys.argv[7] != "/":
     fichier.close()
     true_call, false_call, opcodes_trace = classify_calls(lines)
     print len(true_call) + len(false_call), "calls,", len(true_call), "legitimate,", len(false_call), "obfuscated."
+
     # for i in true_call:
     #     print "L", hex(i)
     # print ""
@@ -351,7 +354,8 @@ if len(sys.argv) > 6 and sys.argv[6] != "/":
     lines = [line.strip() for line in fichier]
     fichier.close()
     trace_first_addr, trace_last_addr, trace_list, trace_dict = trace_from_path(lines)
-    entrypoint = trace_first_addr
+    if trace_first_addr is not None:
+        entrypoint = trace_first_addr
 
 n_n_gram = 3
 n_grams = dict()
