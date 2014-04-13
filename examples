@@ -32,3 +32,14 @@ python2 disasm.py upx/upx-hostname.exe.bin.snapshot0 0x01000000 0 0x01000000 / u
 
 Disasm with trace:
 python2 disasm.py upx/upx-hostname.exe.bin.snapshot0 0x01000000 0 0x01000000 / upx/upx_addr_ordre_00 upx/upx-hostname.exe.bin.trace dump Traces/opcodes.prob usetrace
+
+
+Sane examples:
+ls:
+python2 disasm.py sane/ls 0x08048000 / 0 / sane/ls_itrace.out
+
+mkdir:
+python2 disasm.py sane/mkdir 0x08048000 / 0 / sane/mkdir_itrace.out
+
+id:
+python2 disasm.py sane/id 0x08048000 / 0 / sane/id_itrace.out
