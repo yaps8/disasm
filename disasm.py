@@ -22,8 +22,6 @@ sys.setrecursionlimit(1500000)
 # threading.stack_size(32768)
 threading.stack_size(67108864)
 
-print threading.stack_size()
-
 '''
 Colors:
     Nodes:
@@ -201,12 +199,18 @@ def trace_from_path(lines):
         i += 1
         if "#" not in line:
             key = int(line, 16)
-            trace_list.append(key)
-            if key in trace_dict:
-                trace_dict[key].append(i)
-            else:
-                trace_dict[key] = [i]
-    return trace_list[0], trace_list[-1], trace_list, trace_dict
+            if beginning <= key <= end:
+                trace_list.append(key)
+                if key in trace_dict:
+                    trace_dict[key].append(i)
+                else:
+                    trace_dict[key] = [i]
+    if len(trace_list) == 0:
+        return None, None, trace_list, trace_dict
+    elif len(trace_list) == 1:
+        return trace_list[0], trace_list[0], trace_list, trace_dict
+    else:
+        return trace_list[0], trace_list[-1], trace_list, trace_dict
 
 
 def classify_calls(lines):
@@ -295,16 +299,6 @@ if len(sys.argv) > 5 and sys.argv[5] != "/":
 else:
     entrypoint = beginning
 
-trace_dict = dict()
-trace_list = []
-trace_first_addr = beginning
-trace_last_addr = end
-if len(sys.argv) > 6 and sys.argv[6] != "/":
-    fichier = open(sys.argv[6], "rb")
-    lines = [line.strip() for line in fichier]
-    fichier.close()
-    trace_first_addr, trace_last_addr, trace_list, trace_dict = trace_from_path(lines)
-    entrypoint = trace_first_addr
 
 true_call = set()
 false_call = set()
@@ -344,6 +338,20 @@ if len(sys.argv) > 8 and sys.argv[8] == "dump":
 else:
     rc.bin_load("", 0)
 
+
+if end == 0:
+    end = beginning + bin.size
+
+trace_dict = dict()
+trace_list = []
+trace_first_addr = beginning
+trace_last_addr = end
+if len(sys.argv) > 6 and sys.argv[6] != "/":
+    fichier = open(sys.argv[6], "rb")
+    lines = [line.strip() for line in fichier]
+    fichier.close()
+    trace_first_addr, trace_last_addr, trace_list, trace_dict = trace_from_path(lines)
+    entrypoint = trace_first_addr
 
 n_n_gram = 3
 n_grams = dict()
@@ -391,9 +399,6 @@ if len(sys.argv) > 10 and sys.argv[10] == "displaytrace":
 rc.config.set_i('asm.arch', 32)
 rc.assembler.set_bits(32)
 rc.anal.set_bits(32)
-
-if end == 0:
-    end = beginning + bin.size
 
 # print rc.cmd_str("s "+str(beginning))
 # print rc.cmd_str("pd 5")
@@ -866,18 +871,36 @@ def addr_in_graph(g, addr):
     return False, None
 
 
+def addr_in_graph2(addr):
+    if addr in addr_info and 'node' in addr_info[addr]:
+        return True, addr_info[addr]['node']
+    else:
+        return False, None
+
+
+def add_node_to_graph(block, g):
+    if block.addr not in addr_info:
+        addr_info[block.addr] = dict()
+
+    addr_info[block.addr]['node'] = block
+    g.add_node(block)
+
+
 def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram):
     #nm1_grams list with n-n_n_gram, n-n_n_gram+1, ... n-1 inst type
 
+    # print len(g.nodes())
     block = BasicBlock(addr)
-    exists, existing_block = addr_in_graph(g, addr)
+    # exists, existing_block = addr_in_graph2(g, addr)
+    exists, existing_block = addr_in_graph2(addr)
     inst = disas_at(addr, virtual_offset, beginning, end, f)
 
     if exists:
         block = existing_block
     else:
         block.add_inst(inst)
-        g.add_node(block)
+        # g.add_node(block)
+        add_node_to_graph(block, g)
 
     b_inst = block.insts[0]
     m_gram = list(m_gram)
@@ -917,6 +940,7 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram)
     else:
         if exists:
             return block
+
     if b_inst.is_none:
         block.head_is_none = True
 
@@ -1517,6 +1541,7 @@ def disas_segment(beginning, end, virtual_offset, f):
         add_trace_edges(g, trace_list)
     print "Coloring blocks and removing None..."
     color_nodes(g, p_quantile)
+    print len(g.nodes()), "nodes in initial graph."
 
     print "Sweeping layers..."
     layers_trace, n_dis_jumps_trace = layers_stats(g, "trace", False)

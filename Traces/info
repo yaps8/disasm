@@ -32,10 +32,18 @@ for i in `echo $list`; do
       n_disas_jmps_disas=`grep "hybrid:" $i/$i"_"$n.log | awk '{print $3}'`
       n_conflicts_disas=`grep "hybrid:" $i/$i"_"$n.log | awk '{print $4}'`
       n_addr_conflicts_disas=`grep "hybrid:" $i/$i"_"$n.log | awk '{print $5}'`
+
+      n_nodes=`grep "initial" $i/$i"_"$n.log|sed 's/\ .*//'`      
+      if [ -e $i/$i"_"$n.time ]; then
+        ti=`cat $i/$i"_"$n.time`
+      else
+        ti="/"
+      fi
       if [ -z $n_layers_trace ]; then
         l=$i"\t(error: in disasm)"
+#	rm $i/disasm
       else
-        l=$i"\t"$m_trace"\t"$n"\t"$n_layers_disas"("$n_layers_trace")\t"$n_disas_jmps_disas"("$n_disas_jmps_trace")\t"$n_conflicts_disas"("$n_conflicts_trace")\t"$n_addr_conflicts_disas"("$n_addr_conflicts_trace")"
+        l=$i"\t"$m_trace"\t"$n"\t"$n_layers_disas"("$n_layers_trace")\t"$n_disas_jmps_disas"("$n_disas_jmps_trace")\t"$n_conflicts_disas"("$n_conflicts_trace")\t"$n_addr_conflicts_disas"("$n_addr_conflicts_trace")\t"$ti"\t"$n_nodes
       fi
       echo -e $l
     done
