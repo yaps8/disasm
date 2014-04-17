@@ -9,7 +9,7 @@ echo "nld(t): number of layers in disasm (resp. in trace)"
 echo "njd(t): number of misaligned jumps in disasm (resp. in trace)"
 echo "ncd(t): number of conflicts in disasm (resp. in trace)"
 echo "nacd(t): number of addresses in conflict in disasm (resp. in trace)"
-l="sample\t\t\t\t\t\t\t\t\tnW\tiW\tnld(t)\tnjd(t)\tncd(t)\tnacd(t)"
+l="sample\t\t\t\t\t\t\t\t\tnW\tiW\tnld(t)\tnjd(t)\tncd(t)\tnacd(t)\ttime\tnodes"
 echo -e $l
 for i in `echo $list`; do
   if [ -e $i/error ]; then

@@ -563,7 +563,7 @@ def disas_at_r2(addr, beginning, end):
         i = Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq, is_none, is_int)
     else:
         print "Error in disas_at_r2 - not in range: ", hi(addr)
-        raise "Error in r2: not in range"
+        # raise "Error in r2: not in range"
         i = None
 
     addr_info[addr]['inst'] = i
@@ -642,7 +642,7 @@ class Layer:
         s = "Layer: (debut, fin)=(%s, %s), insts: %s" % (hi(self.debut), hi(self.fin), str_insts)
         return s
 
-    def to_str(self, i, i_to_l, detailled=False):
+    def to_str(self, i, detailled=False):
         if self.insts:
             str_insts = "["
             for k in self.insts:
@@ -980,6 +980,69 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram)
         # if not has_succ and b_inst.desc != "None":
         #     print hex(b_inst.addr), b_inst.desc, "is final."
     return block
+
+set_addr_in_layers = set()
+def addr_in_layers3(addr, layers):
+    if addr not in set_addr_in_layers:
+        for l in layers:
+            if addr in l:
+                set_addr_in_layers.add(addr)
+                return True
+        return False
+    else:
+        return True
+
+
+addr_aligned_with_addr = dict()
+def addr_aligned(addr1, addr2):
+    min_a = min(addr1, addr2)
+    max_a = max(addr1, addr2)
+    if (min_a, max_a) in addr_aligned_with_addr:
+        return addr_aligned_with_addr[(min_a, max_a)]
+    else:
+        l = Layer(min_a, set())
+        # for a in l.insts:
+        #     print "  ", hi(a)
+        r = max_a in l.insts
+        addr_aligned_with_addr[(min_a, max_a)] = r
+        return r
+    return
+
+
+def addr_aligned_with_layer(addr, layer):
+    for a in layer:
+        if not addr_aligned(addr, a):
+            return False
+    return True
+
+
+def get_first_aligned_layer(addr, layers):
+    for i in range(len(layers)):
+        if addr_aligned_with_layer(addr, layers[i]):
+            return True, i
+    return False, None
+
+
+def make_basic_block3(beginning, end, virtual_offset, addr, f, fsize, layers):
+    exists = addr_in_layers3(addr, layers)
+    inst = disas_at(addr, virtual_offset, beginning, end, f)
+
+    if inst is not None and not exists and beginning <= addr <= addr + inst.size - 1 <= end:
+        print "disas at", hi(beginning), hi(addr), hi(addr + inst.size - 1), hi(end)
+        r, min_i = get_first_aligned_layer(addr, layers)
+        if r:
+            layer = layers[min_i]
+            layer.append(addr)
+        else:
+            layer = [addr]
+            layers.append(layer)
+
+        if inst.has_target:
+            target = inst.target
+            layers = make_basic_block3(beginning, end, virtual_offset, target, f, fsize, layers)
+        if inst.disas_seq:
+            layers = make_basic_block3(beginning, end, virtual_offset, inst.addr + inst.size, f, fsize, layers)
+    return layers
 
 
 def conflict_in_subset(conflict, conflicts):
@@ -1530,14 +1593,26 @@ def disas_segment(beginning, end, virtual_offset, f):
     g = nx.MultiDiGraph()
 
     print "Disassembling file..."
+    layers = []
     for a in range(beginning, end + 1):
         # print inst
         # if inst.has_target or inst.addr == beginning:
         # print hi(inst.addr), hi(virtual_offset)
         # if inst.addr == beginning: #or inst.addr == 0x4:
-        if a in trace_dict or a == entrypoint:
-            make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize, [])
 
+        if a in trace_dict or a == entrypoint:
+            # make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize, [])
+            make_basic_block3(beginning, end, virtual_offset, a, f, fsize, layers)
+
+    print "exiting"
+    for i in range(len(layers)):
+        print "layer", i
+        s = ""
+        layers[i].sort()
+        for a in layers[i]:
+            s += " " + hi(a)
+        print s
+    exit(0)
     # print "Splitting blocks..."
     # split_all_blocks(g)
     if trace_list:
@@ -1560,8 +1635,8 @@ def disas_segment(beginning, end, virtual_offset, f):
     # for l in layers_trace:
     #     print layers_trace[l].to_str(layers_trace[l].debut, inst_to_l, False)
     #
-    # for l in layers_hybrid:
-    #     print layers_hybrid[l].to_str(layers_hybrid[l].debut, inst_to_l, False)
+    for l in layers_hybrid:
+        print layers_hybrid[l].to_str(layers_hybrid[l].debut, False)
 
     # print "Computing conflicts..."
     # conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end)

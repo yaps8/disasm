@@ -21,3 +21,4 @@ python2 disasm.py upx.bin / / / / / / bin
 Traces:
 cd /home/aurelien/pin-2.13-62732-gcc.4.4.7-linux/source/tools/ManualExamples
 ../../../pin -t obj-ia32/itrace.so -- ~/disasm/running-ex
+python2 disasm.py upx.bin 0xf2 0xff 0xf2 0xf2 / / bin / usetrace
