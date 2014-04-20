@@ -5,6 +5,7 @@ import sys
 import os
 # import distorm3
 import networkx as nx
+import bisect
 # import colorsys
 from networkx import dag
 from random import randrange
@@ -983,14 +984,7 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, m_gram)
 
 set_addr_in_layers = set()
 def addr_in_layers3(addr, layers):
-    if addr not in set_addr_in_layers:
-        for l in layers:
-            if addr in l:
-                set_addr_in_layers.add(addr)
-                return True
-        return False
-    else:
-        return True
+    return addr in set_addr_in_layers
 
 
 addr_aligned_with_addr = dict()
@@ -1003,17 +997,54 @@ def addr_aligned(addr1, addr2):
         l = Layer(min_a, set())
         # for a in l.insts:
         #     print "  ", hi(a)
+        for n in l.insts:
+            addr_aligned_with_addr[(min_a, n)] = True
+
         r = max_a in l.insts
         addr_aligned_with_addr[(min_a, max_a)] = r
         return r
-    return
+
+
+def sweep_and_classify(addr, addr_aligned_with_addr2, addr2, classify):
+    print "sweeping", hi(addr)
+    insts = []
+    a = addr
+    i = disas_at(a, virtual_offset, beginning, end, f)
+    while beginning <= a and a + i.size <= end + 1:
+        insts.append(a)
+        if classify:
+            addr_aligned_with_addr2[(addr, a)] = True
+            if i.size == 0:
+                raise "Size is 0."
+            for j in range(a + 1, a + i.size):
+                for k in insts:
+                    addr_aligned_with_addr2[(k, j)] = False
+        a += i.size
+        if not classify and a == addr2:
+            return True
+        if beginning <= a <= end:
+            i = disas_at(a, virtual_offset, beginning, end, f)
+        else:
+            break
+    return False
+
+
+addr_aligned_with_addr2 = dict()
+def addr_aligned2(addr1, addr2):
+    min_a = min(addr1, addr2)
+    max_a = max(addr1, addr2)
+    if (min_a, max_a) in addr_aligned_with_addr2:
+        return addr_aligned_with_addr2[(min_a, max_a)]
+    else:
+        if min_a == addr2:
+            sweep_and_classify(min_a, addr_aligned_with_addr2, None, True)
+        else:
+            sweep_and_classify(min_a, addr_aligned_with_addr2, max_a, False)
+            return addr_aligned_with_addr2[(min_a, max_a)]
 
 
 def addr_aligned_with_layer(addr, layer):
-    for a in layer:
-        if not addr_aligned(addr, a):
-            return False
-    return True
+    return addr_aligned2(addr, layer[0])
 
 
 def get_first_aligned_layer(addr, layers):
@@ -1023,6 +1054,7 @@ def get_first_aligned_layer(addr, layers):
     return False, None
 
 
+addr_layer_to_aligned_addr = dict()
 def make_basic_block3(beginning, end, virtual_offset, addr, f, fsize, layers):
     exists = addr_in_layers3(addr, layers)
     inst = disas_at(addr, virtual_offset, beginning, end, f)
@@ -1032,17 +1064,78 @@ def make_basic_block3(beginning, end, virtual_offset, addr, f, fsize, layers):
         r, min_i = get_first_aligned_layer(addr, layers)
         if r:
             layer = layers[min_i]
-            layer.append(addr)
+            bisect.insort(layer, addr)
+            # layer.append(addr)
         else:
             layer = [addr]
             layers.append(layer)
+        set_addr_in_layers.add(addr)
 
+        if inst.disas_seq:
+            layers = make_basic_block3(beginning, end, virtual_offset, inst.addr + inst.size, f, fsize, layers)
         if inst.has_target:
             target = inst.target
             layers = make_basic_block3(beginning, end, virtual_offset, target, f, fsize, layers)
-        if inst.disas_seq:
-            layers = make_basic_block3(beginning, end, virtual_offset, inst.addr + inst.size, f, fsize, layers)
     return layers
+
+
+def make_basic_block4(beginning, end, virtual_offset, addr, g, f, fsize, layers):
+    block = BasicBlock(addr)
+    exists, existing_block = addr_in_graph2(addr)
+    inst = disas_at(addr, virtual_offset, beginning, end, f)
+
+    if exists:
+        block = existing_block
+    else:
+        block.add_inst(inst)
+        add_node_to_graph(block, g)
+
+    b_inst = block.insts[0]
+    if exists:
+        return block, layers
+
+    # print "disas at", hi(beginning), hi(addr), hi(addr + inst.size - 1), hi(end)
+    r, min_i = get_first_aligned_layer(addr, layers)
+    if r:
+        layer = layers[min_i]
+        layer.append(addr)
+    else:
+        layer = [addr]
+        layers.append(layer)
+
+    if b_inst.is_none:
+        block.head_is_none = True
+
+    # finding successors to disassemble from them:
+    if not useTrace or b_inst.addr != trace_last_addr:
+        has_succ = False
+        all_succ_goto_none = True
+
+        if b_inst.has_target:
+            has_succ = True
+            target = b_inst.target
+            if beginning <= target <= end:
+                b, layers = make_basic_block4(beginning, end, virtual_offset, target, g, f,
+                                            fsize, layers)
+                if not exists:
+                    connect_to(g, block, b, "red")
+                if not b.head_is_none:
+                    all_succ_goto_none = False
+
+        if b_inst.disas_seq:
+            has_succ = True
+            if beginning <= b_inst.addr + b_inst.size <= end:
+                b, layers = make_basic_block4(beginning, end, virtual_offset, b_inst.addr + b_inst.size, g, f,
+                                            fsize, layers)
+                if not exists:
+                    connect_to(g, block, b)
+                if not b.head_is_none:
+                    all_succ_goto_none = False
+
+        if has_succ and all_succ_goto_none and not b_inst.is_int \
+                and not ((b_inst.is_jcc or b_inst.is_call) and not b_inst.has_target):
+            block.head_is_none = True
+    return block, layers
 
 
 def conflict_in_subset(conflict, conflicts):
@@ -1511,7 +1604,7 @@ def color_nodes(g, p_seuil):
 
 def sweep_layer(a, inst_to_l, layers):
     if a not in inst_to_l:
-        # print "Layer @" + hi(a)
+        # print "Sweeping Layer @", hi(a), a
         new_l = Layer(a, inst_to_l)
         # layers_to_remove = set()
         # for l in layers_addr:
@@ -1590,6 +1683,7 @@ def layers_stats(g, mode, mark_edges=False): #mode: hybrid, trace
 
 
 def disas_segment(beginning, end, virtual_offset, f):
+    print "beginning:", hi(beginning), "; end:", hi(end)
     g = nx.MultiDiGraph()
 
     print "Disassembling file..."
@@ -1601,20 +1695,26 @@ def disas_segment(beginning, end, virtual_offset, f):
         # if inst.addr == beginning: #or inst.addr == 0x4:
 
         if a in trace_dict or a == entrypoint:
-            # make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize, [])
-            make_basic_block3(beginning, end, virtual_offset, a, f, fsize, layers)
+            make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize, [])
+            # layers = make_basic_block3(beginning, end, virtual_offset, a, f, fsize, layers)
+            # make_basic_block4(beginning, end, virtual_offset, a, g, f, fsize, layers)
 
-    print "exiting"
-    for i in range(len(layers)):
-        print "layer", i
-        s = ""
-        layers[i].sort()
-        for a in layers[i]:
-            s += " " + hi(a)
-        print s
-    exit(0)
+    # print "exiting"
+    # for i in range(len(layers)):
+    #     print "layer", i
+    #     s = ""
+    #     layers[i].sort()
+    #     for a in layers[i]:
+    #         s += " " + hi(a)
+    #     print s
+    # exit(0)
     # print "Splitting blocks..."
     # split_all_blocks(g)
+
+    # print "min", hi(min([n.insts[0].addr for n in g.nodes()]))
+    # print "max", hi(max([n.insts[0].addr for n in g.nodes()]))
+    # exit(0)
+
     if trace_list:
         print "Adding trace edges..."
         add_trace_edges(g, trace_list)
@@ -1635,8 +1735,8 @@ def disas_segment(beginning, end, virtual_offset, f):
     # for l in layers_trace:
     #     print layers_trace[l].to_str(layers_trace[l].debut, inst_to_l, False)
     #
-    for l in layers_hybrid:
-        print layers_hybrid[l].to_str(layers_hybrid[l].debut, False)
+    # for l in layers_hybrid:
+    #     print layers_hybrid[l].to_str(layers_hybrid[l].debut, False)
 
     # print "Computing conflicts..."
     # conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end)
