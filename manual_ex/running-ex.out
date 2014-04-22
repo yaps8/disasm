@@ -1,0 +1,19 @@
+Couldn't import dot_parser, loading of dot files will not be possible.
+Loading binary file (PE, ELF...).
+Disassembling file...
+beginning: 0x8048060 ; end: 0x8048198
+Adding trace edges...
+Coloring blocks and removing invalid nodes...
+31 nodes in initial graph.
+Sweeping layers...
+4 active layers and 2 disalignment jumps from trace.
+4 active layers and 2 disalignment jumps from hybrid disassembly.
+Layer @0x8048060: [0x8048060 0x8048065 0x804806a 0x804806d 0x804806f 0x8048072 0x8048077 0x804807a 0x8048095 0x8048097 0x804809c 0x804809e 0x80480a1 0x80480a3 0x80480a8 0x80480ad ]
+Layer @0x8048073: [0x8048073 0x8048075 0x8048076 @0x8048060]
+Layer @0x804807e: [0x804807e 0x8048081 @0x8048060]
+Layer @0x8048087: [0x8048087 0x8048089 0x804808a 0x804808b 0x8048090 @0x8048060]
+Grouping sequential instructions...
+Computing overlapping instructions...
+There are 4 bytes in overlapping instructions in trace.
+There are 27 bytes in overlapping instructions in hybrid disassembly.
+6 conflicts remain.
