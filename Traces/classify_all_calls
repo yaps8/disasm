@@ -1,9 +1,0 @@
-#!/bin/bash
-
-list=`ls | grep tar | sed 's/\.tar.*//'`
-
-for i in `echo $list`; do
-  echo "Processing "$i
-  python2 ../from-traces/classify_call.py $i/$i.trace
-  echo ""
-done

@@ -1,8 +1,0 @@
-#!/bin/bash
-
-list=`ls | grep tar | sed 's/\.tar.*//'`
-
-for i in `echo $list`; do
-  echo "Processing "$i
-	./disasm_snapshot $i
-done
