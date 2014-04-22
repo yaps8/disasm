@@ -221,16 +221,6 @@ def classify_calls(lines):
     return true_call, false_call, opcodes_trace
 
 
-def ngrams_from_lines(lines):
-    n_n_gram = int(lines.pop(0))
-    n_grams = dict()
-    for l in lines:
-        a = l.split()
-        t = tuple(a[0:n_n_gram])
-        p = float(a[n_n_gram + 1])
-        n_grams[t] = p
-    return n_n_gram, n_grams
-
 if len(sys.argv) <= 1 or sys.argv[1] == "-h" or sys.argv[1] == "--help":
     usage = "python disasm.py (first_addr) (last_addr) (offset) (entrypoint) (trace_list) (trace_detailled) " \
             "(bin/dump) (n-gram.prob) (usatrace/displaytrace)"
@@ -319,28 +309,8 @@ def trace_ngrams(opcodes, n_n_gram):
     return tuples
 
 
-quantile = 5
-p_quantile = 100.0
-if len(sys.argv) > 9 and sys.argv[9] != "/":
-    print "Using opcodes prob."
-    f_prob = open(sys.argv[9], "rb")
-    lines = [line.strip() for line in f_prob]
-    f_prob.close()
-    n_n_gram, n_grams = ngrams_from_lines(lines)
-
-    p_trace = []
-    tr_grams = trace_ngrams(opcodes_trace, n_n_gram)
-    for t in tr_grams:
-        if t in n_grams:
-            p_trace.append(float(n_grams[t]))
-        else:
-            p_trace.append(0.0)
-    p_quantile = numpy.percentile(p_trace, quantile)
-    print str(quantile) + "ème centile pour les " + str(n_n_gram) + "-grams: " + str(p_quantile)
-
-
 useTrace = True
-if len(sys.argv) > 10 and sys.argv[10] == "displaytrace":
+if len(sys.argv) > 9 and sys.argv[9] == "displaytrace":
     useTrace = False
 
 rc.config.set_i('asm.arch', 32)
@@ -1295,7 +1265,7 @@ def add_trace_edges(g, trace_list):
     addr_info[trace_list[-1]]['trace'] = True
 
 
-def color_nodes(g, p_seuil):
+def color_nodes(g):
     nodes_to_remove = set()
     for n in g.nodes():
         if n.addr not in addr_info or 'color' not in addr_info[n.addr] \
@@ -1305,8 +1275,6 @@ def color_nodes(g, p_seuil):
                 addr_info[n.addr]['color'] = "orange"
             elif n.head_is_none:
                 nodes_to_remove.add(n)
-            elif n.insts[0].prob is not None and n.insts[0].prob <= p_seuil:
-                addr_info[n.addr]['color'] = "lightgray"
             else:
                 addr_info[n.addr]['color'] = "white"
 
@@ -1415,7 +1383,7 @@ def disas_segment(beginning, end, virtual_offset, f):
         print "Adding trace edges..."
         add_trace_edges(g, trace_list)
     print "Coloring blocks and removing None..."
-    color_nodes(g, p_quantile)
+    color_nodes(g)
     print len(g.nodes()), "nodes in initial graph."
 
     print "Sweeping layers..."
