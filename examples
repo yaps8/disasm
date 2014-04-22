@@ -1,5 +1,9 @@
-En output:
-Quelques informations et le fichier file.dot résultant (a ouvrir avec xdot par exemple)
+Output:
+Information regarding the disassembly and the file.dot graph (open it with xdot for instance)
+
+Syntax:
+python disasm.py file first_addr [last_addr] [offset] [entrypoint] [trace_list] [trace_detailled] [bin/dump] [usetrace/displaytrace] [verbose] [batch]
+Optional parameters can be skipped with / or 0 for last_addr, offset and entrypoint (if they can be inferred from trace).
 
 Manual example:
 Disasm without trace:
@@ -8,19 +12,16 @@ python2 disasm.py manual_ex/running-ex 0x8048060 0x80480a8 0 0x8048060
 Disasm with trace:
 python2 disasm.py manual_ex/running-ex 0x8048060 0 0 / manual_ex/running-ex_itrace.out
 
-Disasm with trace, classifying calls and using n-grams:
-python2 disasm.py manual_ex/running-ex 0x8048060 0 0 / manual_ex/running-ex_itrace.out manual_ex/running-ex.trace bin Traces/opcodes.prob usetrace
+Displaying the layers:
+python2 disasm.py manual_ex/running-ex 0x8048060 0 0 / manual_ex/running-ex_itrace.out / / / verbose
 
 
 TELocK:
 Disasm without trace:
 python2 disasm.py telock/telock99-hostname.bin.exe.snapshot2 0x01000000 0 0x01000000 0x01006e5b / / dump
 
-Disasm with trace, but displaying more:
-python2 disasm.py telock/telock99-hostname.bin.exe.snapshot2 0x01000000 0 0x01000000 / telock/trace3-addr-ordre02 telock/trace3 dump Traces/opcodes.prob displaytrace
-
 Disasm with trace:
-python2 disasm.py telock/telock99-hostname.bin.exe.snapshot2 0x01000000 0 0x01000000 / telock/trace3-addr-ordre02 telock/trace3 dump Traces/opcodes.prob usetrace
+python2 disasm.py telock/telock99-hostname.bin.exe.snapshot2 0x01000000 0 0x01000000 / telock/trace3-addr-ordre02 telock/trace3 dump usetrace
 
 
 UPX:
@@ -28,13 +29,9 @@ Disasm without trace:
 python2 disasm.py upx/upx-hostname.exe.bin.snapshot0 0x01000000 0 0x01000000 0x010058c0 / / dump 
 python2 disasm.py upx/upx-hostname.exe.bin.snapshot1 0x01000000 0 0x01000000 0x010011d7 / / dump 
 
-Disasm with trace, but displaying more:
-python2 disasm.py upx/upx-hostname.exe.bin.snapshot0 0x01000000 0 0x01000000 / upx/upx_addr_ordre_00 upx/upx-hostname.exe.bin.trace dump Traces/opcodes.prob displaytrace
-python2 disasm.py upx/upx-hostname.exe.bin.snapshot1 0x01000000 0 0x01000000 / upx/upx_addr_ordre_01 upx/upx-hostname.exe.bin.trace dump Traces/opcodes.prob displaytrace
-
 Disasm with trace:
-python2 disasm.py upx/upx-hostname.exe.bin.snapshot0 0x01000000 0 0x01000000 / upx/upx_addr_ordre_00 upx/upx-hostname.exe.bin.trace dump Traces/opcodes.prob usetrace
-python2 disasm.py upx/upx-hostname.exe.bin.snapshot1 0x01000000 0 0x01000000 / upx/upx_addr_ordre_01 upx/upx-hostname.exe.bin.trace dump Traces/opcodes.prob usetrace
+python2 disasm.py upx/upx-hostname.exe.bin.snapshot0 0x01000000 0 0x01000000 / upx/upx_addr_ordre_00 upx/upx-hostname.exe.bin.trace dump usetrace
+python2 disasm.py upx/upx-hostname.exe.bin.snapshot1 0x01000000 0 0x01000000 / upx/upx_addr_ordre_01 upx/upx-hostname.exe.bin.trace dump usetrace
 
 
 Sane examples:
