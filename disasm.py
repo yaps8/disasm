@@ -3,24 +3,17 @@
 
 import sys
 import os
-# import distorm3
 import networkx as nx
 import bisect
-# import colorsys
 from networkx import dag
 from random import randrange
 from r2 import r_core
-# from  import Enum
-# import matplotlib.pyplot as plt
-# import pydot
 import numpy
 import threading
 
 
 useRadare = True
 sys.setrecursionlimit(1500000)
-# sys.setrecursionlimit(150)
-# threading.stack_size(32768)
 threading.stack_size(67108864)
 
 '''
@@ -96,32 +89,6 @@ class Instruction:
         self.is_none = is_none
         self.is_int = is_int
         self.prob = None
-
-    # @staticmethod
-    # def target(str):
-    #     t = str.split()
-    #     if t[0] in ["jz", "jnz", "jmp"]:
-    #         target = int(t[1],16)
-    #         if t[0] == "jmp":
-    #             return True, target, False, False
-    #         else:
-    #             return True, target, True, False
-    #     elif t[0] in ["call"]:
-    #         return False, 0, False, True
-    #     else:
-    #         return False, 0, False, False
-
-    # @staticmethod
-    # def inst_from_distorm(d_inst):
-    #     addr = d_inst[0]
-    #     size = d_inst[1]
-    #     desc = d_inst[2].lower()
-    #     i, t, jcc, call = Instruction.target(d_inst[2].lower())
-    #     is_call = call
-    #     has_target = i
-    #     target = t
-    #     is_jcc = jcc
-    #     return Instruction(addr, size, desc, is_call, has_target, target, is_jcc, True, False, False)
 
     def __str__(self):
         s = str(hex(int(self.addr))) + ": " + str(hex(int(self.size))) + ", " + self.desc
@@ -222,14 +189,11 @@ def classify_calls(lines):
         l = lines[i]
         if "_" in l:
             a = l.split()
-            # print l
             if len(a) >= 4:
-                # print "0:", a[0], "1:", a[1], "2:", a[2], "3:", a[3]
                 size = int(a[1][1:3], 16)
                 opcodes_trace.append(a[3].lower())
                 if a[3] == "CALL":
                     wave, addr = a[0].split("_")
-                    # wave = int(wave)
                     addr = int(addr, 16)
                     if addr not in calls.keys():
                         ret_addr = addr + size
@@ -240,7 +204,6 @@ def classify_calls(lines):
                             a = next_line.split()
                             next_wave, next_addr = a[0].split("_")
                             next_addr = int(next_addr, 16)
-                            # print "added", hex(next_addr)
                             return_addr.add(next_addr)
                 elif a[3] == "RET":
                     if i + 1 < len(lines):
@@ -313,28 +276,9 @@ if len(sys.argv) > 7 and sys.argv[7] != "/":
     true_call, false_call, opcodes_trace = classify_calls(lines)
     print len(true_call) + len(false_call), "calls,", len(true_call), "legitimate,", len(false_call), "obfuscated."
 
-    # for i in true_call:
-    #     print "L", hex(i)
-    # print ""
-    # for i in false_call:
-    #     print "O", hex(i)
-
-# if len(sys.argv) > 5:
-#     op_chance_1000 = dict_op()
-# else:
-#     op_chance_1000 = dict()
-
 addr_info = dict()
-# addr -> d = dict()
-# d['color'], d['basic_block']
 
 rc = r_core.RCore()
-# rc.assembler.set_syntax(1)  # Intel syntax
-# rc.config.set_i('asm.arch', 32)
-# rc.assembler.set_bits(32)
-# rc.anal.set_bits(32)
-# print path
-# rc.file_open(path, 0, 0)
 bin = rc.file_open(path, 0, virtual_offset)
 
 if len(sys.argv) > 8 and sys.argv[8] == "dump":
@@ -399,54 +343,18 @@ useTrace = True
 if len(sys.argv) > 10 and sys.argv[10] == "displaytrace":
     useTrace = False
 
-# print len(n_grams)
-
 rc.config.set_i('asm.arch', 32)
 rc.assembler.set_bits(32)
 rc.anal.set_bits(32)
-
-# print rc.cmd_str("s "+str(beginning))
-# print rc.cmd_str("pd 5")
-#
-# print rc.cmd_str("s 0")
-# print rc.cmd_str("pd 5")
 
 reg_set = set()
 reg_set.add("eax")
 reg_set.add("ebx")
 reg_set.add("ecx")
-# reg_set.add("cs")
-# reg_set.add("ds")
-# reg_set.add("es")
-# reg_set.add("fs")
-# reg_set.add("gs")
-# reg_set.add("ss")
 reg_set.add("esi")
 reg_set.add("edi")
 reg_set.add("ebp")
 reg_set.add("eip")
-# reg_set.add("ax")
-# reg_set.add("bx")
-# reg_set.add("cx")
-# reg_set.add("dx")
-# reg_set.add("ah")
-#reg_set.add("al")
-# reg_set.add("bh")
-# reg_set.add("bl")
-# reg_set.add("ch")
-# reg_set.add("cl")
-# reg_set.add("dh")
-# reg_set.add("dl")
-
-
-# def disas_at_distorm(addr, virtual_offset, beginning, end, f):
-#     if beginning <= addr <= end:
-#         f.seek(addr)
-#         l = distorm3.Decode(addr, f.read(min(16, end-addr)), distorm3.Decode32Bits)[0]
-#         l[0] += virtual_offset
-#         return Instruction.inst_from_distorm(l)
-#     else:
-#         print "Error in disas_at"
 
 
 class OpType:
@@ -572,11 +480,7 @@ def disas_at_r2(addr, beginning, end):
 
 
 def disas_at(addr, virtual_offset, beginning, end, f):
-    # if useRadare:
     return disas_at_r2(addr, beginning, end)
-    # else:
-    #     return disas_at_distorm(addr, virtual_offset, beginning, end, f)
-
 
 class Layer:
     def __init__(self):
@@ -612,27 +516,7 @@ class Layer:
                 break
         self.fin = lasta_p_size
 
-    # def __init__(self, addr):
-    #     self.insts = []
-    #     self.debut = addr
-    #     a = addr
-    #     lasta = a
-    #     i = disas_at(a, virtual_offset, beginning, end, f)
-    #     while beginning <= a and a + i.size <= end + 1:
-    #         self.insts.append(a)
-    #         lasta = a
-    #         if i.size == 0:
-    #             raise "Size is 0."
-    #         a += i.size
-    #         if beginning <= a <= end: #and not (a in inst_to_l and len(inst_to_l[a]) != 0):
-    #             i = disas_at(a, virtual_offset, beginning, end, f)
-    #         else:
-    #             break
-    #     self.fin = lasta
-
     def __str__(self):
-        # sorted_i = list(self.insts)
-        # sorted_i.sort()
         if self.insts:
             str_insts = "["
             for i in self.insts:
@@ -1568,12 +1452,10 @@ def add_trace_edges(g, trace_list):
                     g.add_node(bv)
                 a_to_b[v] = bv
 
-            # print u, v
             if frozenset([u, v]) not in edges_done:
                 connect_to(g, bu, bv, "red", st_dyn="dyn")
                 edges_done.add(frozenset([u, v]))
 
-    # print hex(trace_list[0])
     addr_info[trace_list[0]]['color'] = "orange"
     addr_info[trace_list[0]]['trace'] = True
     if trace_list[-1] not in addr_info:
@@ -1595,7 +1477,6 @@ def color_nodes(g, p_seuil):
             elif n.insts[0].prob is not None and n.insts[0].prob <= p_seuil:
                 addr_info[n.addr]['color'] = "lightgray"
             else:
-                # print hi(n.addr), type(n.insts[0].prob), n.insts[0].prob, p_seuil, type(p_seuil), "white"
                 addr_info[n.addr]['color'] = "white"
 
     for n in nodes_to_remove:
@@ -1604,22 +1485,9 @@ def color_nodes(g, p_seuil):
 
 def sweep_layer(a, inst_to_l, layers):
     if a not in inst_to_l:
-        # print "Sweeping Layer @", hi(a), a
         new_l = Layer(a, inst_to_l)
-        # layers_to_remove = set()
-        # for l in layers_addr:
-        #     if l in new_l.insts:
-        #         print "layer @" + hi(l) + " being removed"
-                # rm_layer_to_inst_to_layers(l, inst_to_l)
-                # layers_to_remove.add(l)
-        # for l in layers_to_remove:
-        #     layers_addr.remove(l)
-        # print new_l.to_str(new_l.debut, inst_to_l, False)
         layers[new_l.debut] = new_l
         add_layer_to_inst_to_layer(new_l, inst_to_l)
-        # del new_l
-    # else:
-        # print "layer @" + hi(a) + " already sweeped"
 
 
 # returns True if the layer l realigns with layer where l2_debut is
@@ -1673,10 +1541,7 @@ def layers_stats(g, mode, mark_edges=False): #mode: hybrid, trace
 
     list_addr_to_sweep.sort()
     for a in list_addr_to_sweep:
-        # if len(layers) < 200:
         sweep_layer(a, inst_to_l, layers)
-        # else:
-        #     raise "Too many layers..."
 
     n_dis_jumps = count_dis_jumps(g, inst_to_l, mode, mark_edges, layers)
     return layers, n_dis_jumps
@@ -1762,9 +1627,6 @@ def disas_segment(beginning, end, virtual_offset, f):
 
 def disas_file(beginning, end, virtual_offset, f):
     return disas_segment(beginning, end, virtual_offset, f)
-    # return disas_segment(0x6e5b, fsize-1, f, fsize)
-    # return disas_segment(0x6e5b, 0x6e8a, f, fsize)
-
 
 def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr):
     f = open(path, 'wb')
@@ -1772,27 +1634,7 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr):
     f.write("digraph G {\n")
     f.write("labeljust=r\n")
     for n in g.nodes():
-        # disas_at(n.insts[0], virtual_offset, beginning, end, f)
         color = addr_info[n.addr]['color']
-        # op0 = inst.desc.split(" ")[0]
-        # if not op0 in op_chance_1000:
-        #     print "not", op0
-        #     p = 0
-        # else:
-        #     p = op_chance_1000[op0]
-        #     print "has", op0, p
-        #
-        # if p == 0:
-        #     color = "\"#000000\""
-        # elif p < 0.1:
-        #     color = "\"#000022\""
-        # elif p < 1:
-        #     color = "\"#000055\""
-        # elif p < 5:
-        #     color = "\"#000077\""
-        # else:
-        #     color = "\"#0000bb\""
-        #
         if n.addr in trace_dict:
             o = trace_dict[n.addr]
             if len(o) >= 4:
@@ -1812,16 +1654,6 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr):
     for e in g.edges(data=True):
         u, v, d = e
 
-        # min_a = min(u.addr, v.addr)
-        # max_a = max(u.addr, v.addr)
-        # change_layer = False
-        # if min_a not in inst_to_l or max_a not in inst_to_l:
-        #     print "toDot: addr in no layer"
-        # else:
-        #     for l in inst_to_l[min_a]:
-        #         if l not in inst_to_l[max_a]:
-        #             change_layer = True
-        #         break
         if 'aligned' in d:
             change_layer = not d['aligned']
         else:
@@ -1856,22 +1688,12 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr):
             arrow_size = 0.5
             penwidth = 1.0
 
-
-            # f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) +
-            #         "\" [style=dotted,arrowhead=none,color=" + d['color'] + "]\n")
-        # else:
-
         f.write("\"" + hex(int(u.addr)) + "\"" + " -> " + "\"" + hex(int(v.addr)) +
                 "\" [style="+style+", dir=" + dir_type + ", arrowhead=" + arrow_head
                 + ", arrowtail=" + arrow_tail + ", penwidth=" + str(penwidth)
                 + ", arrowsize=" + str(arrow_size)
                 + ", color=" + d['color'] + "]\n")
     f.write("}")
-
-# g = nx.MultiDiGraph()
-# g.add_node(2, "e")
-# g.add_node(3, "g")
-# g.add_node(4, "m")
 
 g = disas_file(beginning, end, virtual_offset, f)
 print_graph_to_file("file.dot", virtual_offset, g, trace_first_addr, trace_last_addr)
