@@ -919,7 +919,6 @@ def make_basic_block3(beginning, end, virtual_offset, addr, f, fsize, layers):
         if r:
             layer = layers[min_i]
             bisect.insort(layer, addr)
-            # layer.append(addr)
         else:
             layer = [addr]
             layers.append(layer)
@@ -931,65 +930,6 @@ def make_basic_block3(beginning, end, virtual_offset, addr, f, fsize, layers):
             target = inst.target
             layers = make_basic_block3(beginning, end, virtual_offset, target, f, fsize, layers)
     return layers
-
-
-def make_basic_block4(beginning, end, virtual_offset, addr, g, f, fsize, layers):
-    block = BasicBlock(addr)
-    exists, existing_block = addr_in_graph2(addr)
-    inst = disas_at(addr, virtual_offset, beginning, end, f)
-
-    if exists:
-        block = existing_block
-    else:
-        block.add_inst(inst)
-        add_node_to_graph(block, g)
-
-    b_inst = block.insts[0]
-    if exists:
-        return block, layers
-
-    # print "disas at", hi(beginning), hi(addr), hi(addr + inst.size - 1), hi(end)
-    r, min_i = get_first_aligned_layer(addr, layers)
-    if r:
-        layer = layers[min_i]
-        layer.append(addr)
-    else:
-        layer = [addr]
-        layers.append(layer)
-
-    if b_inst.is_none:
-        block.head_is_none = True
-
-    # finding successors to disassemble from them:
-    if not useTrace or b_inst.addr != trace_last_addr:
-        has_succ = False
-        all_succ_goto_none = True
-
-        if b_inst.has_target:
-            has_succ = True
-            target = b_inst.target
-            if beginning <= target <= end:
-                b, layers = make_basic_block4(beginning, end, virtual_offset, target, g, f,
-                                            fsize, layers)
-                if not exists:
-                    connect_to(g, block, b, "red")
-                if not b.head_is_none:
-                    all_succ_goto_none = False
-
-        if b_inst.disas_seq:
-            has_succ = True
-            if beginning <= b_inst.addr + b_inst.size <= end:
-                b, layers = make_basic_block4(beginning, end, virtual_offset, b_inst.addr + b_inst.size, g, f,
-                                            fsize, layers)
-                if not exists:
-                    connect_to(g, block, b)
-                if not b.head_is_none:
-                    all_succ_goto_none = False
-
-        if has_succ and all_succ_goto_none and not b_inst.is_int \
-                and not ((b_inst.is_jcc or b_inst.is_call) and not b_inst.has_target):
-            block.head_is_none = True
-    return block, layers
 
 
 def conflict_in_subset(conflict, conflicts):
@@ -1360,8 +1300,7 @@ def disas_segment(beginning, end, virtual_offset, f):
 
         if a in trace_dict or a == entrypoint:
             make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize, [])
-            # layers = make_basic_block3(beginning, end, virtual_offset, a, f, fsize, layers)
-            # make_basic_block4(beginning, end, virtual_offset, a, g, f, fsize, layers)
+            layers = make_basic_block3(beginning, end, virtual_offset, a, f, fsize, layers)
 
     # print "exiting"
     # for i in range(len(layers)):
