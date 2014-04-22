@@ -5,6 +5,26 @@ Syntax:
 python disasm.py file first_addr [last_addr] [offset] [entrypoint] [trace_list] [trace_detailled] [bin/dump] [usetrace/displaytrace] [verbose] [batch]
 Optional parameters can be skipped with / or 0 for last_addr, offset and entrypoint (if they can be inferred from trace).
 
+The following color and shapes apply for nodes and edges in the file.dot graph.
+
+Nodes:
+  Orange -> entrypoint (into trace)
+  Blue -> exitpoint (from trace)
+  Pink -> node in trace
+  White -> node not in trace (static analysis)
+Directed edges:
+  Color:
+    Red -> Jump target
+    Black -> Next instruction
+  Shape:
+    Dashed -> From static analysis only
+    Solid -> From trace only
+    Bold -> Both
+Non-directed edges:
+  Black dotted edges -> Overlapping insructions:
+
+
+
 Manual example:
 Disasm without trace:
 python2 disasm.py manual_ex/running-ex 0x8048060 0x80480a8 0 0x8048060 
