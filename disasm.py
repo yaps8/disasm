@@ -451,18 +451,19 @@ class Layer:
         s = "Layer: (debut, fin)=(%s, %s), insts: %s" % (hi(self.debut), hi(self.fin), str_insts)
         return s
 
-    def to_str(self, i, detailled=False):
+    def to_str(self, i, g, detailled=False):
         if self.insts:
             str_insts = "["
             for k in self.insts:
                 if type(k) is str:
                     str_insts += "@" + hi(int(k[1:]))
                 else:
-                    if detailled:
-                        str_insts += str(disas_at(k, virtual_offset, beginning, end, f))
-                    else:
-                        str_insts += hi(k)
-                str_insts += " "
+                    if k in addr_info and 'node' in addr_info[k] and addr_info[k]['node'] in g:
+                        if detailled:
+                            str_insts += str(disas_at(k, virtual_offset, beginning, end, f))
+                        else:
+                            str_insts += hi(k)
+                        str_insts += " "
             str_insts += "]"
         else:
             str_insts = ""
@@ -915,7 +916,7 @@ def disas_segment(beginning, end, virtual_offset, f):
 
     if verbose:
         for l in layers_hybrid:
-            print layers_hybrid[l].to_str(layers_trace[l].debut, False)
+            print layers_hybrid[l].to_str(layers_trace[l].debut, g, False)
 
     print "Grouping sequential instructions..."
     group_all_seq(g, dict())
@@ -930,7 +931,6 @@ def disas_segment(beginning, end, virtual_offset, f):
         print "trace:", len(layers_trace), n_dis_jumps_trace, len(conflicts_trace), len(addr_in_conflicts_trace)
         print "hybrid:", len(layers_hybrid), n_dis_jumps_hybrid, len(conflicts), len(addr_in_conflicts)
 
-    print len(conflicts), "conflicts remain."
     draw_conflicts(g, conflicts)
     return g
 
