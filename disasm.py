@@ -184,7 +184,7 @@ def classify_calls(lines):
 
 if len(sys.argv) <= 1 or sys.argv[1] == "-h" or sys.argv[1] == "--help":
     usage = "python disasm.py (file) (first_addr) (last_addr) (offset) (entrypoint) (trace_list) (trace_detailled) " \
-            "(bin/dump) (usetrace/displaytrace) ([verbose]) ([batch])"
+            "(bin/dump) (usetrace/displaytrace) ([verbose])"
     print "Usage:", usage
     print "See examples in examples file."
     exit()
@@ -262,10 +262,6 @@ if len(sys.argv) > 9 and sys.argv[9] == "displaytrace":
 verbose = False
 if len(sys.argv) > 10 and sys.argv[10] == "verbose":
     verbose = True
-
-batch = False
-if len(sys.argv) > 11 and sys.argv[11] == "batch":
-    batch = True
 
 rc.config.set_i('asm.arch', 32)
 rc.assembler.set_bits(32)
@@ -926,10 +922,6 @@ def disas_segment(beginning, end, virtual_offset, f):
     conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end, "hybrid")
     print "There are", len(addr_in_conflicts_trace), "bytes in overlapping instructions in trace."
     print "There are", len(addr_in_conflicts), "bytes in overlapping instructions in hybrid disassembly."
-
-    if batch:
-        print "trace:", len(layers_trace), n_dis_jumps_trace, len(conflicts_trace), len(addr_in_conflicts_trace)
-        print "hybrid:", len(layers_hybrid), n_dis_jumps_hybrid, len(conflicts), len(addr_in_conflicts)
 
     draw_conflicts(g, conflicts)
     return g
