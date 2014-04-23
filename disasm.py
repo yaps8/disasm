@@ -225,7 +225,7 @@ if len(sys.argv) > 7 and sys.argv[7] != "/":
     lines = [line.strip() for line in fichier]
     fichier.close()
     true_call, false_call, opcodes_trace = classify_calls(lines)
-    print len(true_call) + len(false_call), "calls,", len(true_call), "legitimate,", len(false_call), "obfuscated."
+    # print len(true_call) + len(false_call), "calls,", len(true_call), "legitimate,", len(false_call), "obfuscated."
 
 addr_info = dict()
 
@@ -875,15 +875,29 @@ def disas_segment(beginning, end, virtual_offset, f):
         for l in layers_hybrid:
             print layers_hybrid[l].to_str(layers_trace[l].debut, g, False)
 
+    n_true_calls = 0
+    n_false_calls = 0
+    for n in g.nodes():
+        if n.addr in true_call:
+            n_true_calls += 1
+        elif n.addr in false_call:
+            n_false_calls += 1
+    print "There are", n_true_calls + n_false_calls, "calls.", n_true_calls, "are legitimate and", n_false_calls, "are obfuscated."
+
     print "Grouping sequential instructions..."
     group_all_seq(g, dict())
 
     print "Computing overlapping instructions..."
     conflicts_trace, addr_in_conflicts_trace = compute_conflicts(g, beginning, end, "trace")
     conflicts, addr_in_conflicts = compute_conflicts(g, beginning, end, "hybrid")
-    print "There are", len(addr_in_conflicts_trace), "bytes in overlapping instructions in trace."
-    print "There are", len(addr_in_conflicts), "bytes in overlapping instructions in hybrid disassembly."
+    
+    print len(conflicts_trace), "conflicts,", len(addr_in_conflicts_trace), "bytes in conflicts in trace."
+    print len(conflicts), "conflicts,", len(addr_in_conflicts), "bytes in conflicts in hybrid disassembly."
 
+    print "trace:", len(layers_trace), n_dis_jumps_trace, len(conflicts_trace), len(addr_in_conflicts_trace), \
+            n_true_calls, n_false_calls, n_true_calls + n_false_calls
+    print "hybrid:", len(layers_hybrid), n_dis_jumps_hybrid, len(conflicts), len(addr_in_conflicts)
+    print len(conflicts), "conflicts remain."
     draw_conflicts(g, conflicts)
     return g
 
