@@ -1,8 +1,5 @@
 Prerequisite:
-It is needed to install Radare2 and the python bindings.
-
-
-These can be found there: http://www.radare.org/y/?p=download
+It is needed to install Radare2 (http://www.radare.org/) and the python bindings.
 
 One way is to do:
 
