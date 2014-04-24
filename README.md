@@ -6,13 +6,10 @@ These can be found there: http://www.radare.org/y/?p=download
 
 One way is to do:
 
-git clone git://github.com/radare/radare2
+git clone git://github.com/radare/radare2 
 
-cd (...)/radare2
-
-./sys/install.sh
-
-./sys/python.sh
+and to follow the build instructions for radare2 and the bindings given here:
+https://github.com/radare/radare2
 
 
 The disassembler runs on python2.7 and examples can be found in the EXAMPLE file.
