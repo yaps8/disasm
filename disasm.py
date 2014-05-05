@@ -121,7 +121,34 @@ class BasicBlock:
         return s
 
 
-def trace_from_path(lines):
+def trace_from_path(lines, w):
+    i = 0
+    trace_dict = dict()
+    trace_list = []
+    for line in lines:
+        i += 1
+        if "#" not in line:
+            if "_" in line:
+                a = line.split()
+                if len(a) >= 4:
+                    wave, addr = a[0].split("_")
+                    wave = int(wave)
+                    addr = int(addr, 16)
+                    if wave == w and beginning <= addr <= end:
+                        trace_list.append(addr)
+                        if addr in trace_dict:
+                            trace_dict[addr].append(i)
+                        else:
+                            trace_dict[addr] = [i]
+    if len(trace_list) == 0:
+        return None, None, trace_list, trace_dict
+    elif len(trace_list) == 1:
+        return trace_list[0], trace_list[0], trace_list, trace_dict
+    else:
+        return trace_list[0], trace_list[-1], trace_list, trace_dict
+
+
+def trace_from_simple_path(lines):
     i = 0
     trace_dict = dict()
     trace_list = []
@@ -183,18 +210,32 @@ def classify_calls(lines):
     return true_call, false_call, opcodes_trace
 
 
+def get_wave(w, path):
+    if w is not None:
+        return w
+    else:
+        s = path.split("snapshot")
+        if len(s) < 2:
+            return None
+        else:
+            n = s[1]
+            if n.isdigit():
+                return int(n)
+            else:
+                return None
 
-usage = "usage: %prog [options] arg1 arg2"
+
+usage = "usage: %prog [options] binary_file"
 parser = OptionParser(usage=usage)
-parser.add_option("-t", "--trace-list",
-                  type="string", dest="trace_list_path", default=None,
-                  help="path of the trace file")
-parser.add_option("-d", "--trace-detailled",
+parser.add_option("-T", "--trace",
                   type="string", dest="trace_detailled_path", default=None,
-                  help="path of the trace file")
+                  help="path of the detailled trace file (preferred)")
+parser.add_option("-t", "--trace-simple",
+                  type="string", dest="trace_list_path", default=None,
+                  help="path of a simple trace file with only addresses (if no detailled trace is available)")
 parser.add_option("-v", "--verbose",
                   action="store_true", dest="verbose", default=False,
-                  help="More verbose output")
+                  help="more verbose output")
 parser.add_option("-e", "--entrypoint",
                   type="string", dest="entrypoint", default=None,
                   help="entrypoint of the binary (hex)")
@@ -207,12 +248,15 @@ parser.add_option("-l", "--end",
 parser.add_option("-o", "--offset",
                   type="string", dest="offset", default=None,
                   help="offset of the binary (hex)")
+parser.add_option("-w", "--wave",
+                  type="int", dest="wave", default=None,
+                  help="number of the wave to consider in trace")
 parser.add_option("-s", "--display-trace",
                   action="store_false", dest="usetrace", default=True,
-                  help="More verbose output")
+                  help="displays more nodes: do not restrict from trace")
 parser.add_option("-x", "--dump",
                   action="store_true", dest="dump", default=False,
-                  help="More verbose output")
+                  help="set if input is a memory dump and not a compiled binary file")
 
 (options, args) = parser.parse_args()
 if not args:
@@ -228,7 +272,6 @@ if options.verbose:
 useTrace = options.usetrace
 verbose = options.verbose
 
-
 # if len(sys.argv) <= 1 or sys.argv[1] == "-h" or sys.argv[1] == "--help":
 #     usage = "python disasm.py (file) (first_addr) (last_addr) (offset) (entrypoint) (trace_list) (trace_detailled) " \
 #             "(bin/dump) (usetrace/displaytrace) ([verbose])"
@@ -236,6 +279,8 @@ verbose = options.verbose
 #     print "See examples in examples file."
 #     exit()
 # else:
+
+
 
 path = args[0]
 f = open(path, "rb")
@@ -267,11 +312,33 @@ else:
 true_call = set()
 false_call = set()
 opcodes_trace = []
+trace_dict = dict()
+trace_list = []
+trace_first_addr = beginning
+trace_last_addr = end
 if options.trace_detailled_path is not None:
+    wave = get_wave(options.wave, path)
+    if wave is None:
+        print "Wave could not be determined, please add the -w wave option."
+        exit(0)
+    elif verbose:
+        print "Processing wave", wave
     fichier = open(options.trace_detailled_path, "rb")
     lines = [line.strip() for line in fichier]
     fichier.close()
     true_call, false_call, opcodes_trace = classify_calls(lines)
+    trace_first_addr, trace_last_addr, trace_list, trace_dict = trace_from_path(lines, wave)
+    if trace_first_addr is not None:
+        entrypoint = trace_first_addr
+elif options.trace_list_path is not None:
+    fichier = open(options.trace_list_path, "rb")
+    lines = [line.strip() for line in fichier]
+    fichier.close()
+    trace_first_addr, trace_last_addr, trace_list, trace_dict = trace_from_simple_path(lines)
+    if trace_first_addr is not None:
+        entrypoint = trace_first_addr
+
+
     # print len(true_call) + len(false_call), "calls,", len(true_call), "legitimate,", len(false_call), "obfuscated."
 
 addr_info = dict()
@@ -290,17 +357,7 @@ if end == 0:
     end = beginning + bin.size
 
 
-trace_dict = dict()
-trace_list = []
-trace_first_addr = beginning
-trace_last_addr = end
-if options.trace_list_path is not None:
-    fichier = open(options.trace_list_path, "rb")
-    lines = [line.strip() for line in fichier]
-    fichier.close()
-    trace_first_addr, trace_last_addr, trace_list, trace_dict = trace_from_path(lines)
-    if trace_first_addr is not None:
-        entrypoint = trace_first_addr
+
 
 
 rc.config.set_i('asm.arch', 32)

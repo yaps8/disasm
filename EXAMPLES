@@ -30,19 +30,19 @@ Disasm without trace:
 python2 disasm.py manual_ex/running-ex -b 0x8048060 -l 0x80480ae -o 0 -e 0x8048060
 
 Disasm with trace:
-python2 disasm.py manual_ex/running-ex 0x8048060 0 0 / manual_ex/running-ex_itrace.out
+python2 disasm.py manual_ex/running-ex -b 0x8048060 -t manual_ex/running-ex_itrace.out
 
 Displaying the layers:
-python2 disasm.py manual_ex/running-ex 0x8048060 0 0 / manual_ex/running-ex_itrace.out / / / verbose
+python2 disasm.py manual_ex/running-ex -b 0x8048060 -t manual_ex/running-ex_itrace.out -v
 
 
 TELocK:
 Disasm without trace:
-python2 disasm.py telock/telock99-hostname.bin.exe.snapshot2 0x01000000 0 0x01000000 0x01006e5b / / dump
+python2 disasm.py telock/telock99-hostname.bin.exe.snapshot2 --beginning 0x01000000 --offset 0x01000000 --entrypoint 0x01006e5b --dump
 
 Disasm with trace:
 It is needed to unzip telock's trace: unzip telock/trace3.zip
-python2 disasm.py telock/telock99-hostname.bin.exe.snapshot2 0x01000000 0 0x01000000 / telock/trace3-addr-ordre02 telock/trace3 dump usetrace
+python2 disasm.py telock/telock99-hostname.bin.exe.snapshot2 --beginning 0x01000000 --offset 0x01000000 --entrypoint 0x01006e5b --dump -T telock/trace3
 
 
 UPX:
