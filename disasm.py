@@ -4,7 +4,8 @@
 import sys
 import os
 import networkx as nx
-from networkx import dag
+# from networkx import dag
+from optparse import OptionParser
 from r2 import r_core
 import threading
 
@@ -182,36 +183,82 @@ def classify_calls(lines):
     return true_call, false_call, opcodes_trace
 
 
-if len(sys.argv) <= 1 or sys.argv[1] == "-h" or sys.argv[1] == "--help":
-    usage = "python disasm.py (file) (first_addr) (last_addr) (offset) (entrypoint) (trace_list) (trace_detailled) " \
-            "(bin/dump) (usetrace/displaytrace) ([verbose])"
-    print "Usage:", usage
-    print "See examples in examples file."
-    exit()
-else:
-    path = sys.argv[1]
 
+usage = "usage: %prog [options] arg1 arg2"
+parser = OptionParser(usage=usage)
+parser.add_option("-t", "--trace-list",
+                  type="string", dest="trace_list_path", default=None,
+                  help="path of the trace file")
+parser.add_option("-d", "--trace-detailled",
+                  type="string", dest="trace_detailled_path", default=None,
+                  help="path of the trace file")
+parser.add_option("-v", "--verbose",
+                  action="store_true", dest="verbose", default=False,
+                  help="More verbose output")
+parser.add_option("-e", "--entrypoint",
+                  type="string", dest="entrypoint", default=None,
+                  help="entrypoint of the binary (hex)")
+parser.add_option("-b", "--beginning",
+                  type="string", dest="beginning", default=None,
+                  help="first address of the binary (hex)")
+parser.add_option("-l", "--end",
+                  type="string", dest="end", default=None,
+                  help="last address of the binary (hex)")
+parser.add_option("-o", "--offset",
+                  type="string", dest="offset", default=None,
+                  help="offset of the binary (hex)")
+parser.add_option("-s", "--display-trace",
+                  action="store_false", dest="usetrace", default=True,
+                  help="More verbose output")
+parser.add_option("-x", "--dump",
+                  action="store_true", dest="dump", default=False,
+                  help="More verbose output")
+
+(options, args) = parser.parse_args()
+if not args:
+    parser.error("Need at least an argument: binary file")
+if options.verbose:
+    print "reading %s..." % args[0]
+    print "beg:", options.beginning
+    print "end:", options.end
+    print "off:", options.offset
+    print "ep:", options.entrypoint
+    print "ut", options.usetrace
+
+useTrace = options.usetrace
+verbose = options.verbose
+
+
+# if len(sys.argv) <= 1 or sys.argv[1] == "-h" or sys.argv[1] == "--help":
+#     usage = "python disasm.py (file) (first_addr) (last_addr) (offset) (entrypoint) (trace_list) (trace_detailled) " \
+#             "(bin/dump) (usetrace/displaytrace) ([verbose])"
+#     print "Usage:", usage
+#     print "See examples in examples file."
+#     exit()
+# else:
+
+path = args[0]
 f = open(path, "rb")
 fsize = os.path.getsize(path)
 
-if len(sys.argv) > 2 and sys.argv[2] != "/":
-    beginning = int(sys.argv[2], 16)
+if options.beginning is not None:
+    beginning = int(options.beginning, 16)
 else:
     beginning = 0
 
-if len(sys.argv) > 3 and sys.argv[3] != "/":
-    end = int(sys.argv[3], 16)
+if options.end is not None:
+    end = int(options.end, 16)
 else:
     end = beginning + fsize - 1
 
-if len(sys.argv) > 4 and sys.argv[4] != "/":
-    virtual_offset = int(sys.argv[4], 16)
+if options.offset is not None:
+    virtual_offset = int(options.offset, 16)
 else:
     virtual_offset = 0
 
-if len(sys.argv) > 5 and sys.argv[5] != "/":
+if options.entrypoint is not None:
     ep_known = True
-    entrypoint = int(sys.argv[5], 16)
+    entrypoint = int(options.entrypoint, 16)
 else:
     ep_known = False
     entrypoint = beginning
@@ -220,8 +267,8 @@ else:
 true_call = set()
 false_call = set()
 opcodes_trace = []
-if len(sys.argv) > 7 and sys.argv[7] != "/":
-    fichier = open(sys.argv[7], "rb")
+if options.trace_detailled_path is not None:
+    fichier = open(options.trace_detailled_path, "rb")
     lines = [line.strip() for line in fichier]
     fichier.close()
     true_call, false_call, opcodes_trace = classify_calls(lines)
@@ -232,7 +279,7 @@ addr_info = dict()
 rc = r_core.RCore()
 bin = rc.file_open(path, 0, virtual_offset)
 
-if len(sys.argv) > 8 and sys.argv[8] == "dump":
+if options.dump:
     print "Loading binary dump (snapshot)."
 else:
     print "Loading binary file (PE, ELF...)."
@@ -242,26 +289,19 @@ else:
 if end == 0:
     end = beginning + bin.size
 
+
 trace_dict = dict()
 trace_list = []
 trace_first_addr = beginning
 trace_last_addr = end
-if len(sys.argv) > 6 and sys.argv[6] != "/":
-    fichier = open(sys.argv[6], "rb")
+if options.trace_list_path is not None:
+    fichier = open(options.trace_list_path, "rb")
     lines = [line.strip() for line in fichier]
     fichier.close()
     trace_first_addr, trace_last_addr, trace_list, trace_dict = trace_from_path(lines)
     if trace_first_addr is not None:
         entrypoint = trace_first_addr
 
-
-useTrace = True
-if len(sys.argv) > 9 and sys.argv[9] == "displaytrace":
-    useTrace = False
-
-verbose = False
-if len(sys.argv) > 10 and sys.argv[10] == "verbose":
-    verbose = True
 
 rc.config.set_i('asm.arch', 32)
 rc.assembler.set_bits(32)
@@ -818,7 +858,7 @@ def count_dis_jumps(g, inst_to_l, mode, mark_edges, layers):
             min_a = min(u.addr, v.addr)
             max_a = max(u.addr, v.addr)
             if min_a not in inst_to_l or max_a not in inst_to_l:
-                print "disJumps: addr in no layer"
+                print "disJumps: addr in no layer", hi(min_a), hi(max_a)
             else:
                 l = inst_to_l[min_a]
                 l2 = inst_to_l[max_a]
@@ -895,7 +935,7 @@ def disas_segment(beginning, end, virtual_offset, f):
     print len(conflicts), "conflicts,", len(addr_in_conflicts), "bytes in conflicts in hybrid disassembly."
 
     print "trace:", len(layers_trace), n_dis_jumps_trace, len(conflicts_trace), len(addr_in_conflicts_trace), \
-            n_true_calls, n_false_calls, n_true_calls + n_false_calls
+          n_true_calls, n_false_calls, n_true_calls + n_false_calls
     print "hybrid:", len(layers_hybrid), n_dis_jumps_hybrid, len(conflicts), len(addr_in_conflicts)
     print len(conflicts), "conflicts remain."
     draw_conflicts(g, conflicts)
