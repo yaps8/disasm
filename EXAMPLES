@@ -27,7 +27,7 @@ Non-directed edges:
 
 Manual example:
 Disasm without trace:
-python2 disasm.py manual_ex/running-ex 0x8048060 0x80480ae 0 0x8048060 
+python2 disasm.py manual_ex/running-ex -b 0x8048060 -l 0x80480ae -o 0 -e 0x8048060
 
 Disasm with trace:
 python2 disasm.py manual_ex/running-ex 0x8048060 0 0 / manual_ex/running-ex_itrace.out
