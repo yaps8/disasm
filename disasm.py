@@ -476,13 +476,6 @@ def add_layer_to_inst_to_layer(layer, i_to_l):
             i_to_l[i] = layer.debut
 
 
-def rm_layer_to_inst_to_layers(layer_addr, i_to_l):
-    layer = Layer(layer_addr)
-    for i in range(beginning, end + 1):
-        if i in layer.insts and i in i_to_l:
-                i_to_l[i].remove(layer.debut)
-
-
 def get_first_block_having(g, inst):
     nodes = g.nodes()
     for b in nodes:
@@ -571,12 +564,6 @@ def connect_to(g, block, b, color="black", st_dyn="static"):
             g.add_edge(block, b, color=color, st_dyn=st_dyn)
     else:
         g.add_edge(block, b, color=color, st_dyn="static")
-
-
-def addr_to_block(g, addr):
-    for n in g.nodes():
-        if addr in n.insts_int:
-            return n
 
 
 def addr_in_graph(addr):
@@ -700,32 +687,6 @@ def all_reachable_from_set(nodes, g):
             u, v = e
             succ.add(v)
     return succ
-
-
-def soft_graph_copy(g):
-    h = nx.MultiDiGraph()
-    for n in g.nodes():
-        h.add_node(n)
-    for e in g.edges():
-        u, v = e
-        h.add_edge(u, v)
-    return h
-
-
-def remove_conflicts_from_graph(g, n, conflicts):
-    h = soft_graph_copy(g)
-    in_conflict = set()
-    for c in conflicts:
-        if n in c:
-            for n2 in c:
-                if n2 != n:
-                    in_conflict.add(n2)
-    succ = dag.descendants(g, n)
-    for n2 in in_conflict:
-        # print "removing!!", n2
-        if n2 not in succ:
-            h.remove_node(n2)
-    return h
 
 
 def set_to_str(c):
