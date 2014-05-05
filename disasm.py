@@ -7,6 +7,8 @@ import networkx as nx
 # from networkx import dag
 from optparse import OptionParser
 from r2 import r_core
+import pefile
+import sys
 import threading
 
 
@@ -257,6 +259,9 @@ parser.add_option("-s", "--display-trace",
 parser.add_option("-x", "--dump",
                   action="store_true", dest="dump", default=False,
                   help="set if input is a memory dump and not a compiled binary file")
+parser.add_option("-u", "--elf",
+                  action="store_true", dest="elf", default=False,
+                  help="set if input is an elf binary [default assumes PE]")
 
 (options, args) = parser.parse_args()
 if not args:
@@ -269,8 +274,10 @@ if options.verbose:
     print "ep:", options.entrypoint
     print "ut", options.usetrace
 
+path = args[0]
 useTrace = options.usetrace
 verbose = options.verbose
+
 
 # if len(sys.argv) <= 1 or sys.argv[1] == "-h" or sys.argv[1] == "--help":
 #     usage = "python disasm.py (file) (first_addr) (last_addr) (offset) (entrypoint) (trace_list) (trace_detailled) " \
@@ -280,30 +287,41 @@ verbose = options.verbose
 #     exit()
 # else:
 
+pe_entrypoint = None
+pe_virtual_offset = None
 
+if not options.elf:
+    pe = pefile.PE(path)
+    pe_entrypoint = pe.OPTIONAL_HEADER.AddressOfEntryPoint
+    pe_virtual_offset = pe.OPTIONAL_HEADER.ImageBase
 
-path = args[0]
 f = open(path, "rb")
 fsize = os.path.getsize(path)
+
+
+if options.offset is not None:
+    virtual_offset = int(options.offset, 16)
+elif pe_virtual_offset is not None:
+    virtual_offset = pe_virtual_offset
+else:
+    virtual_offset = 0
 
 if options.beginning is not None:
     beginning = int(options.beginning, 16)
 else:
-    beginning = 0
+    beginning = virtual_offset
 
 if options.end is not None:
     end = int(options.end, 16)
 else:
     end = beginning + fsize - 1
 
-if options.offset is not None:
-    virtual_offset = int(options.offset, 16)
-else:
-    virtual_offset = 0
-
 if options.entrypoint is not None:
     ep_known = True
     entrypoint = int(options.entrypoint, 16)
+elif pe_entrypoint is not None:
+    ep_known = True
+    entrypoint = pe_entrypoint
 else:
     ep_known = False
     entrypoint = beginning
@@ -352,9 +370,6 @@ else:
     print "Loading binary file (PE, ELF...)."
     rc.bin_load("", 0)
 
-
-if end == 0:
-    end = beginning + bin.size
 
 
 

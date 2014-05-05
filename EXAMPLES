@@ -27,40 +27,40 @@ Non-directed edges:
 
 Manual example:
 Disasm without trace:
-python2 disasm.py manual_ex/running-ex -b 0x8048060 -l 0x80480ae -o 0 -e 0x8048060
+python2 disasm.py manual_ex/running-ex -b 0x8048060 -l 0x80480ae -o 0 -e 0x8048060 --elf
 
 Disasm with trace:
-python2 disasm.py manual_ex/running-ex -b 0x8048060 -t manual_ex/running-ex_itrace.out
+python2 disasm.py manual_ex/running-ex -b 0x8048060 -t manual_ex/running-ex_itrace.out --elf
 
 Displaying the layers:
-python2 disasm.py manual_ex/running-ex -b 0x8048060 -t manual_ex/running-ex_itrace.out -v
+python2 disasm.py manual_ex/running-ex -b 0x8048060 -t manual_ex/running-ex_itrace.out -v --elf
 
 
 TELocK:
 Disasm without trace:
-python2 disasm.py telock/telock99-hostname.bin.exe.snapshot2 --beginning 0x01000000 --offset 0x01000000 --entrypoint 0x01006e5b --dump
+python2 disasm.py telock/telock99-hostname.bin.exe.snapshot2 --entrypoint 0x01006e5b --dump
 
 Disasm with trace:
 It is needed to unzip telock's trace: unzip telock/trace3.zip
-python2 disasm.py telock/telock99-hostname.bin.exe.snapshot2 --beginning 0x01000000 --offset 0x01000000 --entrypoint 0x01006e5b --dump -T telock/trace3
+python2 disasm.py telock/telock99-hostname.bin.exe.snapshot2 --entrypoint 0x01006e5b --dump -T telock/trace3
 
 
 UPX:
 Disasm without trace:
-python2 disasm.py upx/upx-hostname.exe.bin.snapshot0 0x01000000 0 0x01000000 0x010058c0 / / dump 
-python2 disasm.py upx/upx-hostname.exe.bin.snapshot1 0x01000000 0 0x01000000 0x010011d7 / / dump 
+python2 disasm.py upx/upx-hostname.exe.bin.snapshot0 -e 0x010058c0 --dump
+python2 disasm.py upx/upx-hostname.exe.bin.snapshot1 -e 0x010011d7 --dump
 
 Disasm with trace:
-python2 disasm.py upx/upx-hostname.exe.bin.snapshot0 0x01000000 0 0x01000000 / upx/upx_addr_ordre_00 upx/upx-hostname.exe.bin.trace dump usetrace
-python2 disasm.py upx/upx-hostname.exe.bin.snapshot1 0x01000000 0 0x01000000 / upx/upx_addr_ordre_01 upx/upx-hostname.exe.bin.trace dump usetrace
+python2 disasm.py upx/upx-hostname.exe.bin.snapshot0 -e 0x010058c0 --dump -T upx/upx-hostname.exe.bin.trace
+python2 disasm.py upx/upx-hostname.exe.bin.snapshot1 -e 0x010011d7 --dump -T upx/upx-hostname.exe.bin.trace
 
 
 Sane examples:
 ls:
-python2 disasm.py sane/ls 0x08048000 / 0 / sane/ls_itrace.out
+python2 disasm.py sane/ls -b 0x08048000 -e 0x08048000 -t sane/ls_itrace.out --elf
 
 mkdir:
-python2 disasm.py sane/mkdir 0x08048000 / 0 / sane/mkdir_itrace.out
+python2 disasm.py sane/mkdir -b 0x08048000 -e 0x08048000 -t sane/mkdir_itrace.out --elf
 
 id:
-python2 disasm.py sane/id 0x08048000 / 0 / sane/id_itrace.out
+python2 disasm.py sane/id -b 0x08048000 -e 0x08048000 -t sane/id_itrace.out --elf
