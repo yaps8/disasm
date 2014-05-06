@@ -484,79 +484,6 @@ def disas_at(addr, virtual_offset, beginning, end, f):
     return disas_at_r2(addr, beginning, end)
 
 
-class Layer:
-    def __init__(self):
-        self.insts = []
-        self.debut = 0
-        self.fin = 0
-
-    def __init__(self, insts, debut, fin):
-        self.insts = insts
-        self.debut = debut
-        self.fin = fin
-
-    def __init__(self, addr, inst_to_l):
-        self.insts = []
-        self.debut = addr
-        a = addr
-        i = disas_at(a, virtual_offset, beginning, end, f)
-        lasta_p_size = a + i.size - 1
-        while beginning <= a and a + i.size <= end + 1:
-            if a in inst_to_l:
-                # print "already!!"
-                self.insts.append(str("@")+str(inst_to_l[a]))
-                break
-            else:
-                self.insts.append(a)
-            if i.size == 0:
-                raise "Size is 0."
-            a += i.size
-            lasta_p_size = a - 1
-            if beginning <= a <= end:
-                i = disas_at(a, virtual_offset, beginning, end, f)
-            else:
-                break
-        self.fin = lasta_p_size
-
-    def __str__(self):
-        if self.insts:
-            str_insts = "["
-            for i in self.insts:
-                str_insts += hi(i) + " "
-            str_insts += "]"
-        else:
-            str_insts = ""
-        s = "Layer: (debut, fin)=(%s, %s), insts: %s" % (hi(self.debut), hi(self.fin), str_insts)
-        return s
-
-    def to_str(self, i, g, detailled=False):
-        if self.insts:
-            str_insts = "["
-            for k in self.insts:
-                if type(k) is str:
-                    str_insts += "@" + hi(int(k[1:]))
-                else:
-                    if k in addr_info and 'node' in addr_info[k] and addr_info[k]['node'] in g:
-                        if detailled:
-                            str_insts += str(disas_at(k, virtual_offset, beginning, end, f))
-                        else:
-                            str_insts += hi(k)
-                        str_insts += " "
-            str_insts += "]"
-        else:
-            str_insts = ""
-        s = "Layer @%s: %s" % (hi(i), str_insts)
-        return s
-
-
-def add_layer_to_inst_to_layer(layer, i_to_l):
-    for i in layer.insts:
-        if type(i) is not str:
-            if i in i_to_l:
-                print "i in i_to_l, that should not happen."
-            i_to_l[i] = layer.debut
-
-
 def get_first_block_having(g, inst):
     nodes = g.nodes()
     for b in nodes:
@@ -570,11 +497,7 @@ def is_node_simple_and_succ(g, n, addr_in_conflicts):
 
     outp = g.out_edges(n, data=True)
     inp = g.in_edges(n, data=True)
-    edges = outp + inp
-    for e in edges:
-        u, v, d = e
-        if 'aligned' in d and not d['aligned']:
-            simple = False
+
     if n.addr in addr_in_conflicts:
         simple = False
     if len(outp) >= 1:
@@ -862,70 +785,6 @@ def color_nodes(g):
         g.remove_node(n)
 
 
-def sweep_layer(a, inst_to_l, layers):
-    if a not in inst_to_l:
-        new_l = Layer(a, inst_to_l)
-        layers[new_l.debut] = new_l
-        add_layer_to_inst_to_layer(new_l, inst_to_l)
-
-
-# returns True if the layer l realigns with layer where l2_debut is
-def layer_realigns(layers, l, l2_debut, max_addr):
-    tmp_l = l
-    while True:
-        if tmp_l.debut == l2_debut:
-            return True
-        if type(tmp_l.insts[-1]) is str:
-            if tmp_l.fin < max_addr:
-                tmp_debut = int(tmp_l.insts[-1][1:])
-                tmp_l = layers[tmp_debut]
-            else:
-                return False
-        else:
-            break
-    return False
-
-
-def count_dis_jumps(g, inst_to_l, mode, mark_edges, layers):
-    n = 0
-
-    for e in g.edges(data=True):
-        u, v, d = e
-        if mode == "hybrid" or (mode == "trace" and (d['st_dyn'] == "dyn" or d['st_dyn'] == "both")):
-            min_a = min(u.addr, v.addr)
-            max_a = max(u.addr, v.addr)
-            if min_a not in inst_to_l or max_a not in inst_to_l:
-                print "disJumps: addr in no layer", hi(min_a), hi(max_a)
-            else:
-                l = inst_to_l[min_a]
-                l2 = inst_to_l[max_a]
-                if layer_realigns(layers, layers[l], l2, max_a):
-                    if mark_edges:
-                        d['aligned'] = True
-                else:
-                    if mark_edges:
-                        d['aligned'] = False
-                    n += 1
-    return n
-
-
-def layers_stats(g, mode, mark_edges=False): #mode: hybrid, trace
-    layers = dict()
-    inst_to_l = dict()
-    list_addr_to_sweep = []
-    for n in g.nodes():
-        if mode == "hybrid" or (mode == "trace" and n.addr in addr_info
-                                and 'trace' in addr_info[n.addr] and addr_info[n.addr]['trace']):
-            list_addr_to_sweep.append(n.addr)
-
-    list_addr_to_sweep.sort()
-    for a in list_addr_to_sweep:
-        sweep_layer(a, inst_to_l, layers)
-
-    n_dis_jumps = count_dis_jumps(g, inst_to_l, mode, mark_edges, layers)
-    return layers, n_dis_jumps
-
-
 def disas_segment(beginning, end, virtual_offset, f):
     g = nx.MultiDiGraph()
 
@@ -941,16 +800,6 @@ def disas_segment(beginning, end, virtual_offset, f):
     print "Coloring blocks and removing invalid nodes..."
     color_nodes(g)
     print len(g.nodes()), "nodes in initial graph."
-
-    print "Sweeping layers..."
-    layers_trace, n_dis_jumps_trace = layers_stats(g, "trace", False)
-    layers_hybrid, n_dis_jumps_hybrid = layers_stats(g, "hybrid", True)
-    print len(layers_trace), "active layers and", n_dis_jumps_trace, "disalignment jumps from trace."
-    print len(layers_hybrid), "active layers and", n_dis_jumps_hybrid, "disalignment jumps from hybrid disassembly."
-
-    if verbose:
-        for l in layers_hybrid:
-            print layers_hybrid[l].to_str(layers_trace[l].debut, g, False)
 
     n_true_calls = 0
     n_false_calls = 0
@@ -971,9 +820,9 @@ def disas_segment(beginning, end, virtual_offset, f):
     print len(conflicts_trace), "conflicts,", len(addr_in_conflicts_trace), "bytes in conflicts in trace."
     print len(conflicts), "conflicts,", len(addr_in_conflicts), "bytes in conflicts in hybrid disassembly."
 
-    print "trace:", len(layers_trace), n_dis_jumps_trace, len(conflicts_trace), len(addr_in_conflicts_trace), \
+    print "trace:", len(addr_in_conflicts_trace), \
           n_true_calls, n_false_calls, n_true_calls + n_false_calls
-    print "hybrid:", len(layers_hybrid), n_dis_jumps_hybrid, len(conflicts), len(addr_in_conflicts)
+    print "hybrid:", len(addr_in_conflicts)
     print len(conflicts), "conflicts remain."
     draw_conflicts(g, conflicts)
     return g
@@ -1007,20 +856,10 @@ def print_graph_to_file(path, virtual_offset, g, ep_addr, last_addr):
     for e in g.edges(data=True):
         u, v, d = e
 
-        if 'aligned' in d:
-            change_layer = not d['aligned']
-        else:
-            change_layer = False
-
         arrow_size = 1.0
-        if change_layer:
-            dir_type = "both"
-            arrow_head = "empty"
-            arrow_tail = "odot"
-        else:
-            dir_type = "forward"
-            arrow_tail = "none"
-            arrow_head = "normal"
+        dir_type = "forward"
+        arrow_tail = "none"
+        arrow_head = "normal"
 
         if d['st_dyn'] == "static":
             style = "dashed"
