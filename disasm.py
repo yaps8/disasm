@@ -1,7 +1,6 @@
 #!/usr/bin/python2.7
 # coding: utf-8
 
-import sys
 import os
 import networkx as nx
 # from networkx import dag
@@ -11,8 +10,6 @@ import pefile
 import sys
 import threading
 
-
-useRadare = True
 sys.setrecursionlimit(1500000)
 threading.stack_size(67108864)
 
