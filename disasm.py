@@ -715,7 +715,6 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize):
 def conflict_in_subset(conflict, conflicts):
     for c in conflicts:
         if c != conflict and conflict.issubset(c):
-            # print "subset of conflict detected!"
             return True
     return False
 
