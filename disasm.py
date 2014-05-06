@@ -227,7 +227,8 @@ def get_wave(w, path):
                 return None
 
 
-usage = "usage: %prog [options] binary_file"
+usage = "usage: %prog [options] binary_file" + "\n" + "       See the EXAMPLES file for usage examples," \
+                                                      " use -h or --help to see all options."
 parser = OptionParser(usage=usage)
 parser.add_option("-T", "--trace",
                   type="string", dest="trace_detailled_path", default=None,
@@ -252,7 +253,8 @@ parser.add_option("-o", "--offset",
                   help="offset of the binary (hex)")
 parser.add_option("-w", "--wave",
                   type="int", dest="wave", default=None,
-                  help="number of the wave to consider in trace")
+                  help="number of the wave to consider in trace, not necessary if "
+                       "the input file path is *.snapshot[WAVE]")
 parser.add_option("-s", "--display-trace",
                   action="store_false", dest="usetrace", default=True,
                   help="displays more nodes: do not restrict from trace")
@@ -265,27 +267,11 @@ parser.add_option("-u", "--elf",
 
 (options, args) = parser.parse_args()
 if not args:
-    parser.error("Need at least an argument: binary file")
-if options.verbose:
-    print "reading %s..." % args[0]
-    print "beg:", options.beginning
-    print "end:", options.end
-    print "off:", options.offset
-    print "ep:", options.entrypoint
-    print "ut", options.usetrace
+    parser.error("Needs at least an argument: binary file")
 
 path = args[0]
 useTrace = options.usetrace
 verbose = options.verbose
-
-
-# if len(sys.argv) <= 1 or sys.argv[1] == "-h" or sys.argv[1] == "--help":
-#     usage = "python disasm.py (file) (first_addr) (last_addr) (offset) (entrypoint) (trace_list) (trace_detailled) " \
-#             "(bin/dump) (usetrace/displaytrace) ([verbose])"
-#     print "Usage:", usage
-#     print "See examples in examples file."
-#     exit()
-# else:
 
 pe_entrypoint = None
 pe_virtual_offset = None
@@ -297,7 +283,6 @@ if not options.elf:
 
 f = open(path, "rb")
 fsize = os.path.getsize(path)
-
 
 if options.offset is not None:
     virtual_offset = int(options.offset, 16)
@@ -325,7 +310,6 @@ elif pe_entrypoint is not None:
 else:
     ep_known = False
     entrypoint = beginning
-
 
 true_call = set()
 false_call = set()
@@ -356,11 +340,7 @@ elif options.trace_list_path is not None:
     if trace_first_addr is not None:
         entrypoint = trace_first_addr
 
-
-    # print len(true_call) + len(false_call), "calls,", len(true_call), "legitimate,", len(false_call), "obfuscated."
-
 addr_info = dict()
-
 rc = r_core.RCore()
 bin = rc.file_open(path, 0, virtual_offset)
 
@@ -369,11 +349,6 @@ if options.dump:
 else:
     print "Loading binary file (PE, ELF...)."
     rc.bin_load("", 0)
-
-
-
-
-
 
 rc.config.set_i('asm.arch', 32)
 rc.assembler.set_bits(32)
@@ -476,7 +451,6 @@ def disas_at_r2(addr, beginning, end):
             has_target = True
             target = int(anal_op.jump)
             if addr in false_call:
-                # print "call", hex(addr), "in false_call"
                 if useTrace:
                     disas_seq = False
                 else:
@@ -490,7 +464,6 @@ def disas_at_r2(addr, beginning, end):
             target = addr
 
         if "int" in desc:
-            # print hex(addr), ": ", desc, "->", "is int."
             is_int = True
 
         if desc is None and optype == OpType.R_ANAL_OP_TYPE_ILL:
@@ -504,7 +477,6 @@ def disas_at_r2(addr, beginning, end):
         i = Instruction(addr, size, desc, is_call, has_target, target, is_jcc, disas_seq, is_none, is_int)
     else:
         print "Error in disas_at_r2 - not in range: ", hi(addr)
-        # raise "Error in r2: not in range"
         i = None
 
     addr_info[addr]['inst'] = i
@@ -513,6 +485,7 @@ def disas_at_r2(addr, beginning, end):
 
 def disas_at(addr, virtual_offset, beginning, end, f):
     return disas_at_r2(addr, beginning, end)
+
 
 class Layer:
     def __init__(self):
@@ -580,11 +553,10 @@ class Layer:
 
 
 def add_layer_to_inst_to_layer(layer, i_to_l):
-    # layer = Layer(layer_addr)
     for i in layer.insts:
         if type(i) is not str:
             if i in i_to_l:
-                print "hum ??"
+                print "i in i_to_l, that should not happen."
             i_to_l[i] = layer.debut
 
 
@@ -604,8 +576,6 @@ def is_node_simple_and_succ(g, n, addr_in_conflicts):
     edges = outp + inp
     for e in edges:
         u, v, d = e
-        # if d['color'] != "red" or d['color'] != "black" or d['color'] != "pink":
-        #     simple = False
         if 'aligned' in d and not d['aligned']:
             simple = False
     if n.addr in addr_in_conflicts:
@@ -647,7 +617,6 @@ def group_seq(g, addr_in_conflicts):
 
                     # regroup n and succ:
                     for i in succ.insts:
-                        # inst = disas_at(i, virtual_offset, beginning, end, f)
                         n.add_inst(i)
                     for e in g.out_edges(succ, data=True):
                         u, v, d = e
