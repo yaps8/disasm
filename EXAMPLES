@@ -1,10 +1,6 @@
 Output:
 Information regarding the disassembly and the file.dot graph (open it with xdot for instance)
 
-Syntax:
-python disasm.py file first_addr [last_addr] [offset] [entrypoint] [trace_list] [trace_detailled] [bin/dump] [usetrace/displaytrace] [verbose]
-Optional parameters can be skipped with / or 0 for last_addr, offset and entrypoint (if they can be inferred from trace).
-
 The following color and shapes apply for nodes and edges in the file.dot graph.
 
 Nodes:
