@@ -120,6 +120,35 @@ class BasicBlock:
         return s
 
 
+class Layer:
+    def __init__(self, n):
+        self.number = n
+        self.insts_addr = set()
+        self.bytes_addr = set()
+
+    def add_inst(self, inst):
+        self.insts_addr.add(inst.addr)
+        for i in range(inst.addr, inst.addr + inst.size):
+            self.bytes_addr.add(i)
+
+    def is_inst_in_insts(self, inst):
+        return inst.addr in self.insts_addr
+
+    def is_inst_in_bytes(self, inst):
+        for i in range(inst.addr, inst.addr + inst.size):
+            if i in self.bytes_addr:
+                return True
+        return False
+
+    def __str__(self):
+        s = "Layer " + str(self.number) + " - Instructions:"
+        l = list(self.insts_addr)
+        l.sort()
+        for a in l:
+            s += " " + str(hi(a))
+        return s
+
+
 def trace_from_path(lines, w):
     i = 0
     trace_dict = dict()
@@ -584,26 +613,37 @@ def addr_in_graph(addr):
 def add_node_to_graph(block, g):
     if block.addr not in addr_info:
         addr_info[block.addr] = dict()
-
     addr_info[block.addr]['node'] = block
     g.add_node(block)
 
 
-def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize):
+def add_inst_to_layers(inst, layers):
+    if 'layer' not in addr_info[inst.addr]:
+        for i in range(len(layers)):
+            if not layers[i].is_inst_in_bytes(inst):
+                layers[i].add_inst(inst)
+                return layers
+        l = Layer(len(layers) + 1)
+        l.add_inst(inst)
+        layers.append(l)
+    return layers
+
+
+def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize, layers_disasm, layers_trace):
     block = BasicBlock(addr)
     exists, existing_block = addr_in_graph(addr)
     inst = disas_at(addr, virtual_offset, beginning, end, f)
 
     if exists:
-        block = existing_block
-    else:
-        block.add_inst(inst)
-        add_node_to_graph(block, g)
+        return existing_block, layers_disasm, layers_trace
+
+    block.add_inst(inst)
+    add_node_to_graph(block, g)
+    layers_disasm = add_inst_to_layers(inst, layers_disasm)
+    if addr in trace_dict:
+        layers_trace = add_inst_to_layers(inst, layers_trace)
 
     b_inst = block.insts[0]
-    if exists:
-        return block
-
     if b_inst.is_none:
         block.head_is_none = True
 
@@ -616,8 +656,8 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize):
             has_succ = True
             target = b_inst.target
             if beginning <= target <= end:
-                b = make_basic_block2(beginning, end, virtual_offset, target, g, f,
-                                      fsize)
+                b, layers_disasm, layers_trace = make_basic_block2(beginning, end, virtual_offset, target, g, f,
+                                      fsize, layers_disasm, layers_trace)
                 if not exists:
                     connect_to(g, block, b, "red")
                 if not b.head_is_none:
@@ -626,8 +666,8 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize):
         if b_inst.disas_seq:
             has_succ = True
             if beginning <= b_inst.addr + b_inst.size <= end:
-                b = make_basic_block2(beginning, end, virtual_offset, b_inst.addr + b_inst.size, g, f,
-                                      fsize)
+                b, layers_disasm, layers_trace = make_basic_block2(beginning, end, virtual_offset, b_inst.addr + b_inst.size, g, f,
+                                      fsize, layers_disasm, layers_trace)
                 if not exists:
                     connect_to(g, block, b)
                 if not b.head_is_none:
@@ -636,7 +676,7 @@ def make_basic_block2(beginning, end, virtual_offset, addr, g, f, fsize):
         if has_succ and all_succ_goto_none and not b_inst.is_int \
                 and not ((b_inst.is_jcc or b_inst.is_call) and not b_inst.has_target):
             block.head_is_none = True
-    return block
+    return block, layers_disasm, layers_trace
 
 
 def conflict_in_subset(conflict, conflicts):
@@ -797,9 +837,22 @@ def disas_segment(beginning, end, virtual_offset, f):
 
     print "Disassembling file..."
     print "beginning:", hi(beginning), "; end:", hi(end)
+    layers_disas = []
+    layers_trace = []
     for a in range(beginning, end + 1):
         if a in trace_dict or a == entrypoint:
-            make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize)
+            b, layers_disas, layers_trace = make_basic_block2(beginning, end, virtual_offset, a, g, f, fsize
+                                                              , layers_disas, layers_trace)
+
+    print "layers_disasm:", len(layers_disas)
+    print "layers_trace:", len(layers_trace)
+    if verbose:
+        print "Layers in disas:"
+        for l in layers_disas:
+            print l
+        print "Layers in trace:"
+        for l in layers_trace:
+            print l
 
     if trace_list:
         print "Adding trace edges..."
@@ -827,9 +880,9 @@ def disas_segment(beginning, end, virtual_offset, f):
     print len(conflicts_trace), "conflicts,", len(addr_in_conflicts_trace), "bytes in conflicts in trace."
     print len(conflicts), "conflicts,", len(addr_in_conflicts), "bytes in conflicts in hybrid disassembly."
 
-    print "trace:", len(addr_in_conflicts_trace), \
+    print "trace:", len(addr_in_conflicts_trace), len(layers_trace), \
           n_true_calls, n_false_calls, n_true_calls + n_false_calls
-    print "hybrid:", len(addr_in_conflicts)
+    print "hybrid:", len(addr_in_conflicts), len(layers_disas)
     print len(conflicts), "conflicts remain."
     draw_conflicts(g, conflicts)
     return g
