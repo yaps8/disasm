@@ -1,0 +1,51 @@
+#!/bin/bash
+
+list=`ls | grep zip | sed 's/\.zip//'`
+
+rm -f err_list
+echo "# nW: number of waves"
+echo "# iW: current wave"
+echo "# ncd(t): number of conflicts in disasm (resp. in trace)"
+echo "# nacd(t): number of addresses in conflict in disasm (resp. in trace)"
+l="# nom\tnW\tiW\tnacd\tnacd(t)\ttime\tnodes\ttc\tfc\tcalls"
+echo -e $l
+for i in `echo $list`; do
+  nom=$i
+  if [ -e $i/error ]; then
+    l=$i"\t(error: no trace given)"
+    echo -e $l
+  elif [ -e $i/notpe ]; then
+    l=$i"\t(error: no pe file found)"
+    echo -e $l
+  elif [ -e $i/disasm ]; then
+    n_trace=`tail -n 1 $i/$i".trace" |sed 's/_.*//'`
+    m_trace=`echo $n_trace"+1"|bc`
+    for j in `seq 0 $n_trace`; do
+      n_addr_conflicts_trace=`grep "trace:" $i/$i"_"$j.log | awk '{print $2}'`
+      n_true_calls=`grep "trace:" $i/$i"_"$j.log | awk '{print $3}'`
+      n_false_calls=`grep "trace:" $i/$i"_"$j.log | awk '{print $4}'`
+      n_calls=`grep "trace:" $i/$i"_"$j.log | awk '{print $5}'`
+
+      n_addr_conflicts_disas=`grep "hybrid:" $i/$i"_"$j.log | awk '{print $2}'`
+
+      n_nodes=`grep "initial" $i/$i"_"$j.log|sed 's/\ .*//'`      
+      if [ -e $i/$i"_"$j.time ]; then
+        ti=`cat $i/$i"_"$j.time`
+      else
+        ti="/"
+      fi
+      if [ -z $n_addr_conflicts_trace ]; then
+        l=$i"\t(error: in disasm)"
+	echo $i >> err_list
+#	rm $i/disasm
+      else
+        l=$nom"\t"$m_trace"\t"$j"\t"$n_addr_conflicts_disas"\t"$n_addr_conflicts_trace"\t"$ti"\t"$n_nodes"\t"$n_true_calls"\t"$n_false_calls"\t"$n_calls
+      fi
+      echo -e $l
+    done
+  else
+    l=$i"\t(not done)"
+    echo -e $l
+  fi
+  #echo ''
+done

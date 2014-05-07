@@ -1,0 +1,8 @@
+#!/bin/bash
+
+list=`ls | grep zip | sed 's/\.zip//'`
+
+for i in `echo $list`; do
+  echo "Processing "$i
+	./disasm_snapshot $i
+done

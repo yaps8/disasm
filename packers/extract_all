@@ -1,0 +1,31 @@
+#!/bin/bash
+
+list=`ls | grep zip | sed 's/\.zip//'`
+
+for i in `echo $list`; do
+	echo "Processing "$i
+	if [ -e $i/unzipped ]; then
+		echo "skipping unzipping"
+	else
+		rm -rf $i/
+		unzip $i.zip -d $i
+		echo "Unzipped."
+		touch $i/unzipped
+	fi
+
+
+    if [ -e $i/"traced" ]; then
+        echo "skipping trace calc."
+    else
+        if [ -s $i/$i".exe_itrace.out" ]; then
+            python2 display_binarytrace.py $i/$i".exe_itrace.out" > $i/$i".trace"
+        else
+            touch $i/error
+            echo "trace empty: error"
+        fi
+        touch $i/traced
+        echo "Traced."
+	fi
+	
+	echo ""
+done
