@@ -214,14 +214,15 @@ def get_wave(w, path):
         return w
     else:
         s = path.split("snapshot")
-        if len(s) < 2:
-            return None
+        s2 = path.split("wave")
+        if len(s) >= 2 and s[1].isdigit():
+            return int(s[1])
+        elif len(s2) >= 2 and s2[1].isdigit():
+            return int(s2[1])
         else:
-            n = s[1]
-            if n.isdigit():
-                return int(n)
-            else:
-                return None
+            return None
+
+
 
 
 usage = "usage: %prog [options] binary_file" + "\n" + "       See the EXAMPLES file for usage examples," \
