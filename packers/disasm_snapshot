@@ -9,6 +9,9 @@ elif [ -e $folder/disasm ]; then
   echo "disasm: skipping"
 else
   n_trace=`tail -n 1 $folder/$folder".trace" |sed 's/_.*//'|sed 's/^0*//'`
+  if [ -z $n_trace ]; then
+    n_trace=0
+  fi
   echo $folder": 0.."$n_trace" waves."
   for i in `seq 0 $n_trace`; do
     rm -f file.dot
