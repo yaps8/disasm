@@ -309,6 +309,12 @@ else:
     ep_known = False
     entrypoint = beginning
 
+if verbose:
+    print "offset:", hi(virtual_offset)
+    print "beginning:", hi(beginning)
+    print "entrypoint:", hi(entrypoint)
+    print "end:", hi(end)
+
 true_call = set()
 false_call = set()
 opcodes_trace = []
