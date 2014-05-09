@@ -302,11 +302,20 @@ verbose = options.verbose
 
 pe_entrypoint = None
 pe_virtual_offset = None
+pe_beginning = None
+pe_end = None
 
 if not options.elf:
     pe = pefile.PE(path)
     pe_entrypoint = pe.OPTIONAL_HEADER.AddressOfEntryPoint
     pe_virtual_offset = pe.OPTIONAL_HEADER.ImageBase
+
+    for section in pe.sections:
+        if pe_beginning is None or pe_virtual_offset + section.VirtualAddress < pe_beginning:
+            pe_beginning = pe_virtual_offset + section.VirtualAddress
+        if pe_end is None or pe_end < pe_virtual_offset + section.VirtualAddress + section.Misc_VirtualSize - 1:
+            pe_end = pe_virtual_offset + section.VirtualAddress + section.Misc_VirtualSize - 1
+
 
 f = open(path, "rb")
 fsize = os.path.getsize(path)
@@ -320,11 +329,15 @@ else:
 
 if options.beginning is not None:
     beginning = int(options.beginning, 16)
+elif pe_beginning is not None:
+    beginning = pe_beginning
 else:
     beginning = virtual_offset
 
 if options.end is not None:
     end = int(options.end, 16)
+elif pe_end is not None:
+    end = pe_end
 else:
     end = beginning + fsize - 1
 
