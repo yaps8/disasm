@@ -1,5 +1,6 @@
 #!/bin/bash
 
+trap exit SIGPIPE SIGTERM SIGQUIT SIGSTOP SIGINT
 list=`ls | grep tar | sed 's/\.tar.*//'`
 
 for i in `echo $list`; do

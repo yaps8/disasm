@@ -1,14 +1,37 @@
 #!/bin/bash
 
+trap exit SIGPIPE SIGTERM SIGQUIT SIGSTOP SIGINT
 ulimit -s 262144
 folder=$1
+deleteAfter=0
 
 if [ -e $folder/error ]; then
   echo "error: skipping"
 elif [ -e $folder/disasm ]; then
   echo "disasm: skipping"
 else
+  if [ -e $folder/$folder".trace" ]; then
+    echo "Already traced."
+  elif [ -e $folder/$folder".trace.zip" ]; then
+    echo "Unzipping trace."
+    unzip $folder/$folder".trace.zip"
+    echo "Trace unzipped."
+  elif [ -s $folder/$folder"_itrace.out" ]; then
+    echo "Unpacking trace."
+    python2 ../packers/display_binarytrace.py $folder/$folder"_itrace.out" > $folder/$folder".trace"
+    if [ $deleteAfter -eq 0 ]; then
+      echo "Zipping trace."
+      zip $folder/$folder.trace.zip $folder/$folder.trace
+      echo "Trace zipped."
+    fi
+    echo "Trace unpacked."
+  else
+    touch $folder/error
+    echo "trace empty: error"
+  fi
+
   n_trace=`tail -n 1 $folder/$folder".trace" |sed 's/_.*//'|sed 's/^0*//'`
+  echo $n_trace > $folder/$folder.n_waves
   if [ -z $n_trace ]; then
     n_trace=0
   fi
@@ -21,11 +44,10 @@ else
     set -o xtrace
     /usr/bin/time -f %E -o $timefile python2 ../disasm.py $snapshot -T $folder/$folder.trace > $folder/$folder"_"$i.log 2>$folder/$folder"_"$i.err
     set +o xtrace
-    n_conflicts_disasm=`grep remain $folder/$folder"_"$i.log | sed 's/\ .*//'`
-    echo $n_conflicts_disasm" conflicts in disasm."
     mv file.dot $folder/$folder"_"$i.dot
   done
   touch $folder/disasm
+  rm -f $folder/$folder".trace"
 fi
 
 echo ""

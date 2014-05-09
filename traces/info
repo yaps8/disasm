@@ -27,7 +27,7 @@ for i in `echo $list`; do
     l=$i"\t(error: no pe file found)"
     echo -e $l
   elif [ -e $i/disasm ]; then
-    n_trace=`tail -n 1 $i/$i".trace" |sed 's/_.*//'`
+    n_trace=`cat $i/$i.n_waves`
     m_trace=`echo $n_trace"+1"|bc`
     for j in `seq 0 $n_trace`; do
       n_addr_conflicts_trace=`grep "trace:" $i/$i"_"$j.log | awk '{print $2}'`

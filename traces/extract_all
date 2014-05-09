@@ -1,0 +1,20 @@
+#!/bin/bash
+
+trap exit SIGPIPE SIGTERM SIGQUIT SIGSTOP SIGINT
+list=`ls | grep tar | sed 's/\.tar.*//'`
+newOpcodes=0
+
+for i in `echo $list`; do
+	echo "Processing "$i
+	if [ -e $i/untared ]; then
+		echo "skipping untaring."
+	else
+		rm -rf $i/
+    mkdir $i
+		tar xjf $i.tar.bz2 --strip=4 -C $i
+		echo "Untared."
+		touch $i/untared
+	fi
+	echo ""
+done
+

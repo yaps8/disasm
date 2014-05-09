@@ -4,4 +4,9 @@ list=`ls | grep tar | sed 's/\.tar.*//'`
 
 for i in `echo $list`; do
 	rm -f $i/disasm
+	rm -f $i/error
+	rm -f $i/notpe
+	rm -f $i/$i.n_waves
+	rm -f $i/$i.trace
+	rm -f $i/$i.trace.zip
 done
