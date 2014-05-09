@@ -30,7 +30,7 @@ else
     echo "trace empty: error"
   fi
 
-  n_trace=`tail -n 1 $folder/$folder".trace" |sed 's/_.*//'|sed 's/^0*//'`
+  n_trace=`tail -n 1 $folder/$folder".trace" |sed 's/_.*//'`
   echo $n_trace > $folder/$folder.n_waves
   if [ -z $n_trace ]; then
     n_trace=0
