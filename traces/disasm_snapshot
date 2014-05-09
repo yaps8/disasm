@@ -1,0 +1,31 @@
+#!/bin/bash
+
+ulimit -s 262144
+folder=$1
+
+if [ -e $folder/error ]; then
+  echo "error: skipping"
+elif [ -e $folder/disasm ]; then
+  echo "disasm: skipping"
+else
+  n_trace=`tail -n 1 $folder/$folder".trace" |sed 's/_.*//'|sed 's/^0*//'`
+  if [ -z $n_trace ]; then
+    n_trace=0
+  fi
+  echo $folder": 0.."$n_trace" waves."
+  for i in `seq 0 $n_trace`; do
+    rm -f file.dot
+    snapshot=$folder/$folder"_wave"$i
+    echo "processing wave "$i
+    timefile=$folder/$folder"_"$i.time
+    set -o xtrace
+    /usr/bin/time -f %E -o $timefile python2 ../disasm.py $snapshot -T $folder/$folder.trace > $folder/$folder"_"$i.log 2>$folder/$folder"_"$i.err
+    set +o xtrace
+    n_conflicts_disasm=`grep remain $folder/$folder"_"$i.log | sed 's/\ .*//'`
+    echo $n_conflicts_disasm" conflicts in disasm."
+    mv file.dot $folder/$folder"_"$i.dot
+  done
+  touch $folder/disasm
+fi
+
+echo ""
