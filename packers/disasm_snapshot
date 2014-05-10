@@ -21,8 +21,6 @@ else
     set -o xtrace
     /usr/bin/time -f %E -o $timefile python2 ../disasm.py $snapshot -T $folder/$folder.trace > $folder/$folder"_"$i.log 2>$folder/$folder"_"$i.err
     set +o xtrace
-    n_conflicts_disasm=`grep remain $folder/$folder"_"$i.log | sed 's/\ .*//'`
-    echo $n_conflicts_disasm" conflicts in disasm."
     mv file.dot $folder/$folder"_"$i.dot
   done
   touch $folder/disasm
