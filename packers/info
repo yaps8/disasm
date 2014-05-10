@@ -25,9 +25,9 @@ for i in `echo $list`; do
     for j in `seq 0 $n_trace`; do
       n_addr_conflicts_trace=`grep "trace:" $i/$i"_"$j.log | awk '{print $2}'`
       n_layers_trace=`grep "trace:" $i/$i"_"$j.log | awk '{print $3}'`
-      n_true_calls=`grep "trace:" $i/$i"_"$j.log | awk '{print $3}'`
-      n_false_calls=`grep "trace:" $i/$i"_"$j.log | awk '{print $4}'`
-      n_calls=`grep "trace:" $i/$i"_"$j.log | awk '{print $5}'`
+      n_true_calls=`grep "trace:" $i/$i"_"$j.log | awk '{print $4}'`
+      n_false_calls=`grep "trace:" $i/$i"_"$j.log | awk '{print $5}'`
+      n_calls=`grep "trace:" $i/$i"_"$j.log | awk '{print $6}'`
 
       n_addr_conflicts_disas=`grep "hybrid:" $i/$i"_"$j.log | awk '{print $2}'`
       n_layers_disas=`grep "hybrid:" $i/$i"_"$j.log | awk '{print $3}'`
