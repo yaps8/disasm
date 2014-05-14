@@ -311,6 +311,7 @@ if not options.elf:
     pe_virtual_offset = pe.OPTIONAL_HEADER.ImageBase
 
     for section in pe.sections:
+        print hi(pe_virtual_offset + section.VirtualAddress), hi(pe_virtual_offset + section.VirtualAddress + section.Misc_VirtualSize)
         if pe_beginning is None or pe_virtual_offset + section.VirtualAddress < pe_beginning:
             pe_beginning = pe_virtual_offset + section.VirtualAddress
         if pe_end is None or pe_end < pe_virtual_offset + section.VirtualAddress + section.Misc_VirtualSize - 1:

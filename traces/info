@@ -9,7 +9,7 @@ echo "# nl: number of layers in disasm"
 echo "# nl(t): number of layers in trace"
 echo "# nacd: number of addresses in conflict in disasm"
 echo "# nacd(t): number of addresses in conflict in trace)"
-l="# nom,\thash,\tnW,\tiW,\tnl,\tnl(t),\tnacd,\tnacd(t),\ttime,\tnodes,\ttc,\tfc,\tcalls"
+l="# nom,\thash,\tnW,\tiW,\tcheck,\tnodes,\tnl,\tnl(t),\tnacd,\tnacd(t),\ttime,\ttc,\tfc,\tcalls"
 echo -e $l
 for i in `echo $list`; do
   nom_kasper=`grep $i SHA_list_withnames3.txt | grep Kaspersky | head -n 1 | sed 's/[0-9a-f]*|//'`
@@ -30,6 +30,12 @@ for i in `echo $list`; do
     n_trace=`cat $i/$i.n_waves`
     m_trace=`echo $n_trace"+1"|bc`
     for j in `seq 0 $n_trace`; do
+      ch_error=`grep $i"_"$j ch_error2`
+      if [ -z "$ch_error" ]; then
+        check="Ok"
+      else
+        check="ERROR"
+      fi
       n_addr_conflicts_trace=`grep "^trace:" $i/$i"_"$j.log | awk '{print $2}'`
       n_layers_trace=`grep "^trace:" $i/$i"_"$j.log | awk '{print $3}'`
       n_true_calls=`grep "^trace:" $i/$i"_"$j.log | awk '{print $4}'`
@@ -49,7 +55,7 @@ for i in `echo $list`; do
         l=$nom",\t"$hash",\t(error: in disasm)"
         echo $i >> err_list
       else
-        l=$nom",\t"$hash",\t"$m_trace",\t"$j",\t"$n_layers_disas",\t"$n_layers_trace",\t"$n_addr_conflicts_disas",\t"$n_addr_conflicts_trace",\t"$ti",\t"$n_nodes",\t"$n_true_calls",\t"$n_false_calls",\t"$n_calls
+        l=$nom",\t"$hash",\t"$m_trace",\t"$j",\t"$check",\t"$n_nodes",\t"$n_layers_disas",\t"$n_layers_trace",\t"$n_addr_conflicts_disas",\t"$n_addr_conflicts_trace",\t"$ti",\t"$n_true_calls",\t"$n_false_calls",\t"$n_calls
       fi
       echo -e $l
     done
